@@ -1,0 +1,22 @@
+services:
+  - type: web
+    name: telegram-expense-bot
+    env: node
+    plan: free
+    buildCommand: npm install
+    startCommand: npm start
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: BOT_TOKEN
+        sync: false
+      - key: ADMIN_ID
+        sync: false
+      - key: SPREADSHEET_ID
+        sync: false
+      - key: SPREADSHEET_SHEET_NAME
+        value: AUTO
+      - key: TIMEZONE
+        value: Asia/Tashkent
+      - key: GOOGLE_CREDENTIALS_JSON
+        sync: false
