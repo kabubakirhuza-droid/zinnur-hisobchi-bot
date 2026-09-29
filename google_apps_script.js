@@ -1,29 +1,95 @@
 // =================================================================
-// 📊 TELEGRAM EXPENSE BOT ДЛЯ GOOGLE APPS SCRIPT (БЕЗ СЕРВЕРА 24/7)
+// 🌟 ZIN-NUR XISOBCHI BOT — GOOGLE APPS SCRIPT (BUTUNLAY SERVERSIZ 24/7)
+// =================================================================
+// Ushbu skript Google Sheets ichida ishlaydi. Hech qanday kompyuter yoki
+// tashqi server kerak emas! 100% Google serverlarida 24/7/365 bepul ishlaydi.
 // =================================================================
 
 const BOT_TOKEN = "8760033475:AAGd1me4GB-F9u2ZZmeBilrQKuOtWU8QYRg";
-const ADMIN_ID = "716752890";
-const SPREADSHEET_ID = "1SrAtH5bLRXD3KrMw0km-F8T0CmpzaNO8Xy1n0sOiAYE";
+const ADMIN_ID = "716752890"; // Yagona bosh administrator
 
-// Колонки категорий согласно структуре Google Sheets:
-const CATEGORIES = {
-  svet_uchun:     { label: "💡 Svet uchun", col: 1 },  // A, B
-  gaz_uchun:      { label: "🔥 Gaz uchun", col: 3 },   // C, D
-  ovqat:          { label: "🍲 Ovqat", col: 5 },       // E, F
-  kunlik_xarajat: { label: "🛒 Kunlik xarajat", col: 7 }, // G, H
-  oylik:          { label: "💵 Oylik", col: 9 },       // I, J
-  avans:          { label: "💳 Avans", col: 11 }       // K, L
+// Filiallar va jadvallar
+const BRANCHES = {
+  uchtepa: {
+    key: "uchtepa",
+    name: "🏢 Uchtepa",
+    spreadsheetId: "1SrAtH5bLRXD3KrMw0km-F8T0CmpzaNO8Xy1n0sOiAYE",
+    sheetTitle: "X N"
+  },
+  sergeli: {
+    key: "sergeli",
+    name: "🏬 Sergeli",
+    spreadsheetId: "1uYxa1MNQxx0cmvScS69JpBtrnSpkVkrkpsG_nF9x6Mc",
+    sheetTitle: "X N"
+  }
 };
 
-// Проверка работы веб-приложения при открытии в браузере
+const CATEGORIES = [
+  // Xodimlar
+  { key: "ustozlar_av", label: "Ustozlar av.", group: "xodimlar", groupName: "👥 Xodimlar" },
+  { key: "ustozlar_bonus", label: "Ustozlar bonus", group: "xodimlar", groupName: "👥 Xodimlar" },
+  { key: "oquv_bolimi", label: "O'quv bo'limi", group: "xodimlar", groupName: "👥 Xodimlar" },
+  { key: "oquv_bolimi_bonus", label: "O'quv bo'limi bonus", group: "xodimlar", groupName: "👥 Xodimlar" },
+  { key: "farroshlar_oklad", label: "Farroshlar oklad", group: "xodimlar", groupName: "👥 Xodimlar" },
+  { key: "farroshlar_bonus", label: "Farroshlar bonus", group: "xodimlar", groupName: "👥 Xodimlar" },
+  { key: "pechat_av", label: "pechat Av.", group: "xodimlar", groupName: "👥 Xodimlar" },
+  { key: "admin_av", label: "Admin AV.", group: "xodimlar", groupName: "👥 Xodimlar" },
+  { key: "admin_bonus", label: "Admin bonus", group: "xodimlar", groupName: "👥 Xodimlar" },
+  { key: "taminot", label: "Ta'minot", group: "xodimlar", groupName: "👥 Xodimlar" },
+  { key: "taminot_kpi", label: "Ta'minot KPI", group: "xodimlar", groupName: "👥 Xodimlar" },
+  { key: "fin_otdel", label: "Fin otdel", group: "xodimlar", groupName: "👥 Xodimlar" },
+  { key: "coo", label: "COO", group: "xodimlar", groupName: "👥 Xodimlar" },
+  { key: "n_av", label: "N. av", group: "xodimlar", groupName: "👥 Xodimlar" },
+  { key: "yurist", label: "Yurist", group: "xodimlar", groupName: "👥 Xodimlar" },
+  { key: "hr_oylik", label: "HR oylik", group: "xodimlar", groupName: "👥 Xodimlar" },
+  { key: "hr_xarajat", label: "HR xarajat", group: "xodimlar", groupName: "👥 Xodimlar" },
+  { key: "sotuv_konsultant", label: "Sotuv konsultant", group: "xodimlar", groupName: "👥 Xodimlar" },
+  { key: "sotuv_av", label: "Sotuv av.", group: "xodimlar", groupName: "👥 Xodimlar" },
+
+  // Ofis & Xo'jalik
+  { key: "tushlik", label: "Tushlik", group: "ofis", groupName: "🏢 Ofis & Xo‘jalik" },
+  { key: "mini_taom", label: "Mini taom", group: "ofis", groupName: "🏢 Ofis & Xo‘jalik" },
+  { key: "arenda", label: "Arenda", group: "ofis", groupName: "🏢 Ofis & Xo‘jalik" },
+  { key: "mini_obsh", label: "Mini obsh.", group: "ofis", groupName: "🏢 Ofis & Xo‘jalik" },
+  { key: "gigiyena_va_stakan", label: "Gigiyena va stakan", group: "ofis", groupName: "🏢 Ofis & Xo‘jalik" },
+  { key: "kommunal", label: "Kommunal", group: "ofis", groupName: "🏢 Ofis & Xo‘jalik" },
+  { key: "umumiy", label: "Umumiy", group: "ofis", groupName: "🏢 Ofis & Xo‘jalik" },
+  { key: "obw_1_marotalik", label: "Obw 1 marotalik", group: "ofis", groupName: "🏢 Ofis & Xo‘jalik" },
+  { key: "pechat", label: "Pechat", group: "ofis", groupName: "🏢 Ofis & Xo‘jalik" },
+  { key: "programma", label: "Programma", group: "ofis", groupName: "🏢 Ofis & Xo‘jalik" },
+  { key: "remont", label: "Remont", group: "ofis", groupName: "🏢 Ofis & Xo‘jalik" },
+  { key: "org_tex", label: "org. Tex", group: "ofis", groupName: "🏢 Ofis & Xo‘jalik" },
+
+  // Marketing & Sotuv
+  { key: "marketing_okl", label: "Marketing + okl", group: "marketing", groupName: "📢 Marketing & Savdo" },
+  { key: "marketing_kpi", label: "Marketing KPI", group: "marketing", groupName: "📢 Marketing & Savdo" },
+  { key: "target", label: "Target", group: "marketing", groupName: "📢 Marketing & Savdo" },
+  { key: "savdo_bonus", label: "Savdo bonus", group: "marketing", groupName: "📢 Marketing & Savdo" },
+  { key: "marketing_harajat", label: "marketing harajat", group: "marketing", groupName: "📢 Marketing & Savdo" },
+  { key: "oqish_motivya", label: "O'qish motiv-ya", group: "marketing", groupName: "📢 Marketing & Savdo" },
+  { key: "sotish_uchun", label: "Sotish uchun", group: "marketing", groupName: "📢 Marketing & Savdo" },
+
+  // Boshqa & Qarz
+  { key: "sergeliga_qarz", label: "Sergeliga qarz", group: "boshqa", groupName: "🔄 Qarz & Boshqa" },
+  { key: "onlinega_qarz", label: "Onlinega qarz", group: "boshqa", groupName: "🔄 Qarz & Boshqa" },
+  { key: "kutilmagan_xarajat", label: "Kutilmagan xarajat", group: "boshqa", groupName: "🔄 Qarz & Boshqa" },
+  { key: "obmen", label: "Obmen", group: "boshqa", groupName: "🔄 Qarz & Boshqa" },
+  { key: "pul_qaytarish", label: "Pul qaytarish", group: "boshqa", groupName: "🔄 Qarz & Boshqa" }
+];
+
+const GROUPS = [
+  { key: "xodimlar", label: "👥 Xodimlar (19)" },
+  { key: "ofis", label: "🏢 Ofis & Xo‘jalik (11)" },
+  { key: "marketing", label: "📢 Marketing (7)" },
+  { key: "boshqa", label: "🔄 Qarz & Boshqa (5)" }
+];
+
+// Tekshirish uchun Get
 function doGet(e) {
-  return ContentService.createTextOutput("✅ Telegram Expense Bot is Active and Running 24/7!");
+  return ContentService.createTextOutput("✅ Zinnur Hisobchi Bot (Google Apps Script) ishlamoqda!");
 }
 
-// =================================================================
-// 🌐 WEBHOOK ОБРАБОТЧИК (Вызывается Telegram при каждом действии)
-// =================================================================
+// Webhook orqali Telegramdan keladigan xabarlarni qabul qilish
 function doPost(e) {
   try {
     if (!e || !e.postData || !e.postData.contents) {
@@ -32,31 +98,66 @@ function doPost(e) {
 
     const update = JSON.parse(e.postData.contents);
 
-    // 1. Обработка текстового сообщения (/hisob ...)
+    // 1. Matnli xabar
     if (update.message && update.message.text) {
-      handleExpenseMessage(update.message);
+      handleIncomingMessage(update.message);
     }
 
-    // 2. Обработка нажатия на кнопку выбора категории админом
+    // 2. Tugma bosilishi (Callback query)
     if (update.callback_query) {
-      handleCategoryCallback(update.callback_query);
+      handleCallback(update.callback_query);
     }
   } catch (err) {
-    Logger.log("doPost Error: " + err.toString());
+    Logger.log("doPost error: " + err.toString());
   }
   return ContentService.createTextOutput("OK");
 }
 
-// =================================================================
-// 📩 ОБРАБОТКА КОМАНДЫ /hisob ИЗ ГРУППЫ
-// =================================================================
-function handleExpenseMessage(msg) {
+function handleIncomingMessage(msg) {
   const text = msg.text.trim();
-  const match = text.match(/^\/hisob(?:@\w+)?(?:\s+(.*))?$/is);
+  const chatTitle = msg.chat.title || "";
+  const chatId = msg.chat.id;
+
+  if (text.startsWith("/start")) {
+    const fromId = String(msg.from.id);
+    let startMsg = "Assalomu alaykum! Men <b>ZIN-NUR Xisobchi Boti</b>man.\n\n";
+    startMsg += "📝 Xarajat kiritish:\n";
+    startMsg += "• <code>/hisob uchtepa taksi 25000</code>\n";
+    startMsg += "• <code>/hisob sergeli taksi 25000</code>\n";
+    startMsg += "• <code>/hisob sergeli #tushlik 35000 osh</code>\n\n";
+    if (fromId === ADMIN_ID) {
+      startMsg += "👑 <b>Siz Administrator sifatida tizimdasiz!</b>";
+    }
+    sendTelegram("sendMessage", { chat_id: chatId, text: startMsg, parse_mode: "HTML" });
+    return;
+  }
+
+  const match = text.match(/^\/(?:hisob|xarajat)(?:@\w+)?(?:\s+(.*))?$/is);
   if (!match || !match[1]) return;
 
-  const payload = match[1].trim().replace(/\s*(?:so['’`]?m|сум|sum|руб|rub|\$|usd)\s*$/i, '');
+  let payload = match[1].trim();
 
+  // 1. Filialni aniqlash
+  let branch = "uchtepa";
+  if (/\b(?:sergeli|сергели|#sergeli)\b/i.test(payload) || /sergeli/i.test(chatTitle)) {
+    branch = "sergeli";
+    payload = payload.replace(/\b(?:sergeli|сергели|#sergeli)\b/gi, "").trim();
+  } else if (/\b(?:uchtepa|учтепа|#uchtepa)\b/i.test(payload) || /uchtepa/i.test(chatTitle)) {
+    branch = "uchtepa";
+    payload = payload.replace(/\b(?:uchtepa|учтепа|#uchtepa)\b/gi, "").trim();
+  }
+
+  // 2. Tegni aniqlash
+  let suggestedCat = null;
+  const hashM = payload.match(/#([\w\u0400-\u04FF_'-]+)/i);
+  if (hashM) {
+    const rawTag = hashM[1].toLowerCase().replace(/[^a-z0-9]/g, "");
+    suggestedCat = CATEGORIES.find(c => c.key.replace(/[^a-z0-9]/g, "") === rawTag || c.label.toLowerCase().replace(/[^a-z0-9]/g, "") === rawTag);
+    payload = payload.replace(hashM[0], "").trim();
+  }
+
+  // 3. Summa va nomini ajratish
+  payload = payload.replace(/\s*(?:so['’`]?m|сум|sum|руб|rub|\$|usd)\s*$/i, "").trim();
   let title = "";
   let amount = 0;
 
@@ -65,9 +166,9 @@ function handleExpenseMessage(msg) {
 
   if (endMatch) {
     title = endMatch[1].trim();
-    amount = parseFloat(endMatch[2].replace(/\s+/g, '').replace(/,/g, '.'));
+    amount = parseFloat(endMatch[2].replace(/\s+/g, "").replace(/,/g, "."));
   } else if (startMatch) {
-    amount = parseFloat(startMatch[1].replace(/\s+/g, '').replace(/,/g, '.'));
+    amount = parseFloat(startMatch[1].replace(/\s+/g, "").replace(/,/g, "."));
     title = startMatch[2].trim();
   } else {
     return;
@@ -76,58 +177,41 @@ function handleExpenseMessage(msg) {
   if (!title || isNaN(amount) || amount <= 0) return;
 
   const from = msg.from || {};
-  const fullName = ((from.first_name || '') + ' ' + (from.last_name || '')).trim() || from.username || "Foydalanuvchi";
-  const username = from.username ? "@" + from.username : "";
-  const groupTitle = msg.chat.title || "Lichka";
-  const chatId = msg.chat.id;
-  const messageId = msg.message_id;
+  const userName = ((from.first_name || "") + " " + (from.last_name || "")).trim() || from.username || "Noma'lum";
+  const userHandle = from.username ? "@" + from.username : userName;
+  const expId = "exp_" + new Date().getTime() + "_" + Math.floor(Math.random() * 1000);
 
-  const now = new Date();
-  const timeStr = Utilities.formatDate(now, "Asia/Tashkent", "dd.MM.yyyy HH:mm");
-  const expId = "exp_" + now.getTime() + "_" + Math.floor(Math.random() * 1000);
-
-  // Сохраняем в кэш Google Apps Script
-  const data = {
+  const expData = {
+    expId: expId,
     title: title,
     amount: amount,
-    fullName: fullName,
-    username: username,
-    groupTitle: groupTitle,
-    chatId: chatId,
-    messageId: messageId,
-    timeStr: timeStr
-  };
-  CacheService.getScriptCache().put(expId, JSON.stringify(data), 21600);
-
-  // Клавиатура с категориями для админа
-  const keyboard = {
-    inline_keyboard: [
-      [
-        { text: "💡 Svet uchun", callback_data: "cat:svet_uchun:" + expId },
-        { text: "🔥 Gaz uchun", callback_data: "cat:gaz_uchun:" + expId }
-      ],
-      [
-        { text: "🍲 Ovqat", callback_data: "cat:ovqat:" + expId },
-        { text: "🛒 Kunlik xarajat", callback_data: "cat:kunlik_xarajat:" + expId }
-      ],
-      [
-        { text: "💵 Oylik", callback_data: "cat:oylik:" + expId },
-        { text: "💳 Avans", callback_data: "cat:avans:" + expId }
-      ],
-      [
-        { text: "❌ Bekor qilish", callback_data: "cancel:" + expId }
-      ]
-    ]
+    branch: branch,
+    userName: userName,
+    userHandle: userHandle,
+    chatTitle: chatTitle || "Lichka"
   };
 
+  CacheService.getScriptCache().put(expId, JSON.stringify(expData), 21600);
+
+  // Guruhda qisqa tasdiq
+  if (msg.chat.type !== "private") {
+    sendTelegram("sendMessage", {
+      chat_id: chatId,
+      text: "📩 <i>Xarajat arizasi (" + BRANCHES[branch].name + ") qabul qilindi.</i>",
+      parse_mode: "HTML",
+      reply_to_message_id: msg.message_id
+    });
+  }
+
+  // Adminga kartochka
+  const keyboard = buildMainKeyboard(expId, suggestedCat, branch);
   const adminText =
-    "📥 <b>Yangi xarajat keldi!</b>\n\n" +
-    "📍 <b>Guruh:</b> " + escapeHtml(groupTitle) + "\n" +
-    "👤 <b>Foydalanuvchi:</b> " + escapeHtml(fullName) + (username ? " (" + username + ")" : "") + "\n" +
-    "📝 <b>Nomi:</b> <code>" + escapeHtml(title) + "</code>\n" +
-    "💰 <b>Summa:</b> <b>" + formatNum(amount) + " so'm</b>\n" +
-    "⏰ <b>Vaqti:</b> " + timeStr + "\n\n" +
-    "<i>Qaysi kategoriyaga yozilsin? Tanlang:</i> 👇";
+    "🔔 <b>Yangi xarajat arizasi!</b>\n\n" +
+    "📍 <b>Filial:</b> <b>" + BRANCHES[branch].name + "</b>\n" +
+    "👤 <b>Yuboruvchi:</b> " + userName + " (" + userHandle + ")\n" +
+    "📝 <b>Nomi:</b> <code>" + title + "</code>\n" +
+    "💵 <b>Summa:</b> <b>" + formatAmountDisplay(amount) + "</b>\n\n" +
+    "👇 <b>Qaysi bo‘limga yozilsin?</b>";
 
   sendTelegram("sendMessage", {
     chat_id: ADMIN_ID,
@@ -137,154 +221,210 @@ function handleExpenseMessage(msg) {
   });
 }
 
-// =================================================================
-// 🔘 ОБРАБОТКА НАЖАТИЯ КНОПОК АДМИНОМ
-// =================================================================
-function handleCategoryCallback(cb) {
-  const cbData = cb.data || "";
-  const parts = cbData.split(":");
-  const action = parts[0];
-  const catKey = parts[1];
-  const expId = parts[2];
-
+function handleCallback(cb) {
+  const data = cb.data || "";
   sendTelegram("answerCallbackQuery", { callback_query_id: cb.id });
 
-  let item = null;
-  const cached = CacheService.getScriptCache().get(expId);
-  if (cached) {
-    item = JSON.parse(cached);
-  } else {
-    item = parseFromText(cb.message.text);
-  }
+  if (data === "noop") return;
 
-  if (!item) {
+  const parts = data.split("_");
+  const action = parts[0];
+  const expId = parts[1];
+
+  const cached = CacheService.getScriptCache().get(expId);
+  if (!cached) {
     sendTelegram("editMessageText", {
       chat_id: cb.message.chat.id,
       message_id: cb.message.message_id,
-      text: "✅ Bu xarajat allaqachon saqlangan yoki bekor qilingan."
+      text: "⚠️ Bu ariza allaqachon ko‘rib chiqilgan yoki eskirgan."
     });
     return;
   }
+  const expData = JSON.parse(cached);
 
-  // Если нажали "Отмена"
   if (action === "cancel") {
     CacheService.getScriptCache().remove(expId);
     sendTelegram("editMessageText", {
       chat_id: cb.message.chat.id,
       message_id: cb.message.message_id,
-      text: "❌ <b>Xarajat bekor qilindi (saqlanmadi)</b>\n\n📝 <b>Nomi:</b> " + escapeHtml(item.title) + "\n💰 <b>Summa:</b> " + formatNum(item.amount) + " so'm",
+      text: "❌ <b>Xarajat arizasi bekor qilindi.</b>\n\n📝 " + expData.title + " (" + formatAmountDisplay(expData.amount) + ")",
       parse_mode: "HTML"
     });
-
-    if (item.chatId && String(item.chatId) !== String(ADMIN_ID)) {
-      sendTelegram("sendMessage", {
-        chat_id: item.chatId,
-        text: "❌ <b>Xarajat rad etildi (saqlanmadi)</b>\n\n📝 <b>Nomi:</b> <code>" + escapeHtml(item.title) + "</code>\n💰 <b>Summa:</b> " + formatNum(item.amount) + " so'm",
-        parse_mode: "HTML",
-        reply_to_message_id: item.messageId
-      });
-    }
     return;
   }
 
-  const cat = CATEGORIES[catKey];
-  if (!cat) return;
-
-  // 1. Запись в Google Таблицу
-  saveToSheet(cat.col, item.title, item.amount);
-  CacheService.getScriptCache().remove(expId);
-
-  // 2. Обновление сообщения админу в ЛС
-  const successAdmin =
-    "✅ <b>Google Sheets-ga muvaffaqiyatli saqlandi!</b>\n\n" +
-    "📁 <b>Kategoriya:</b> " + cat.label + "\n" +
-    "📝 <b>Nomi:</b> <code>" + escapeHtml(item.title) + "</code>\n" +
-    "💰 <b>Summa:</b> <b>" + formatNum(item.amount) + " so'm</b>\n" +
-    "👤 <b>Foydalanuvchi:</b> " + escapeHtml(item.fullName) + "\n" +
-    "📍 <b>Guruh:</b> " + escapeHtml(item.groupTitle) + "\n" +
-    "⏰ <b>Vaqti:</b> " + item.timeStr;
-
-  sendTelegram("editMessageText", {
-    chat_id: cb.message.chat.id,
-    message_id: cb.message.message_id,
-    text: successAdmin,
-    parse_mode: "HTML"
-  });
-
-  // 3. Отправка подтверждения в группу
-  if (item.chatId && String(item.chatId) !== String(ADMIN_ID)) {
-    const groupText =
-      "✅ <b>Xarajat tasdiqlandi va jadvalga kiritildi!</b>\n\n" +
-      "📁 <b>Kategoriya:</b> " + cat.label + "\n" +
-      "📝 <b>Nomi:</b> <code>" + escapeHtml(item.title) + "</code>\n" +
-      "💰 <b>Summa:</b> <b>" + formatNum(item.amount) + " so'm</b>\n" +
-      "👤 <b>Kiritgan:</b> " + escapeHtml(item.fullName) + "\n" +
-      "👨‍💼 <b>Tasdiqladi:</b> Administrator";
-
-    sendTelegram("sendMessage", {
-      chat_id: item.chatId,
-      text: groupText,
+  if (action === "swbranch") {
+    const newBranch = parts[2];
+    expData.branch = newBranch;
+    CacheService.getScriptCache().put(expId, JSON.stringify(expData), 21600);
+    const keyboard = buildMainKeyboard(expId, null, newBranch);
+    const text =
+      "🔔 <b>Xarajat arizasi (" + BRANCHES[newBranch].name + ")</b>\n\n" +
+      "📍 <b>Filial:</b> <b>" + BRANCHES[newBranch].name + "</b>\n" +
+      "👤 <b>Yuboruvchi:</b> " + expData.userName + "\n" +
+      "📝 <b>Nomi:</b> <code>" + expData.title + "</code>\n" +
+      "💵 <b>Summa:</b> <b>" + formatAmountDisplay(expData.amount) + "</b>\n\n" +
+      "👇 Kerakli bo‘limni tanlang:";
+    sendTelegram("editMessageText", {
+      chat_id: cb.message.chat.id,
+      message_id: cb.message.message_id,
+      text: text,
       parse_mode: "HTML",
-      reply_to_message_id: item.messageId
+      reply_markup: JSON.stringify(keyboard)
+    });
+    return;
+  }
+
+  if (action === "grp") {
+    const grpKey = parts[2];
+    const keyboard = buildGroupKeyboard(expId, grpKey);
+    const grpInfo = GROUPS.find(g => g.key === grpKey);
+    const text =
+      "📂 <b>" + (grpInfo ? grpInfo.label : grpKey) + "</b> (" + BRANCHES[expData.branch].name + "):\n\n" +
+      "📝 <b>Nomi:</b> <code>" + expData.title + "</code>\n" +
+      "💵 <b>Summa:</b> <b>" + formatAmountDisplay(expData.amount) + "</b>\n\n" +
+      "Kategoriyani tanlang:";
+    sendTelegram("editMessageText", {
+      chat_id: cb.message.chat.id,
+      message_id: cb.message.message_id,
+      text: text,
+      parse_mode: "HTML",
+      reply_markup: JSON.stringify(keyboard)
+    });
+    return;
+  }
+
+  if (action === "back") {
+    const keyboard = buildMainKeyboard(expId, null, expData.branch);
+    const text =
+      "🔔 <b>Xarajat arizasi (" + BRANCHES[expData.branch].name + ")</b>\n\n" +
+      "📍 <b>Filial:</b> <b>" + BRANCHES[expData.branch].name + "</b>\n" +
+      "👤 <b>Yuboruvchi:</b> " + expData.userName + "\n" +
+      "📝 <b>Nomi:</b> <code>" + expData.title + "</code>\n" +
+      "💵 <b>Summa:</b> <b>" + formatAmountDisplay(expData.amount) + "</b>\n\n" +
+      "👇 Kerakli bo‘limni tanlang:";
+    sendTelegram("editMessageText", {
+      chat_id: cb.message.chat.id,
+      message_id: cb.message.message_id,
+      text: text,
+      parse_mode: "HTML",
+      reply_markup: JSON.stringify(keyboard)
+    });
+    return;
+  }
+
+  if (action === "cat") {
+    const catKey = parts[2];
+    const cat = CATEGORIES.find(c => c.key === catKey);
+    if (!cat) return;
+
+    // Saqlash
+    const res = saveToBranchSheet(expData.branch, catKey, expData.title, expData.amount);
+    CacheService.getScriptCache().remove(expId);
+
+    const successText =
+      "✅ <b>Google Jadvalga muvaffaqiyatli saqlandi!</b>\n\n" +
+      "📍 <b>Filial:</b> <b>" + BRANCHES[expData.branch].name + "</b>\n" +
+      "📊 <b>Kategoriya:</b> <code>" + cat.label + "</code>\n" +
+      "📝 <b>Nomi:</b> " + expData.title + "\n" +
+      "💵 <b>Yozilgan summa:</b> " + res.addedAmount + " ming (" + formatAmountDisplay(expData.amount) + ")\n" +
+      "📅 <b>Oy va kun:</b> " + res.month + ", " + res.day + "-kun (Qator: " + res.row + ")\n" +
+      "👤 <b>Yuboruvchi:</b> " + expData.userName;
+
+    sendTelegram("editMessageText", {
+      chat_id: cb.message.chat.id,
+      message_id: cb.message.message_id,
+      text: successText,
+      parse_mode: "HTML"
     });
   }
 }
 
-// =================================================================
-// 📊 ЗАПИСЬ В GOOGLE ТАБЛИЦУ (В нужные колонки со строки 3)
-// =================================================================
-function saveToSheet(startCol, title, amount) {
-  let ss;
-  try {
-    ss = SpreadsheetApp.openById(SPREADSHEET_ID);
-  } catch (e) {
-    ss = SpreadsheetApp.getActiveSpreadsheet();
+function saveToBranchSheet(branchKey, catKey, title, amount) {
+  const branch = BRANCHES[branchKey] || BRANCHES.uchtepa;
+  const ss = SpreadsheetApp.openById(branch.spreadsheetId);
+  const sheet = ss.getSheetByName(branch.sheetTitle) || ss.getSheets()[0];
+
+  const catIdx = CATEGORIES.findIndex(c => c.key === catKey);
+  const sumCol = 3 + (catIdx * 2); // Col C dan boshlanadi
+  const descCol = sumCol + 1;
+
+  const now = new Date();
+  const day = now.getDate();
+  const row = day + 2;
+
+  let sheetAmount = amount;
+  if (amount >= 1000) sheetAmount = amount / 1000;
+
+  const currentSumVal = sheet.getRange(row, sumCol).getValue();
+  const currentDescVal = sheet.getRange(row, descCol).getValue();
+
+  let finalSum = sheetAmount;
+  let finalDesc = title;
+
+  if (currentSumVal && !isNaN(Number(currentSumVal))) {
+    finalSum = Number(currentSumVal) + sheetAmount;
+    finalDesc = (currentDescVal ? currentDescVal + ", " : "") + title + " " + sheetAmount;
   }
 
-  const sheet = ss.getSheets()[0];
-  const values = sheet.getRange(3, startCol, 1000, 2).getValues();
+  sheet.getRange(row, sumCol).setValue(finalSum);
+  sheet.getRange(row, descCol).setValue(finalDesc);
 
-  let targetRow = 3 + values.length;
-  for (let i = 0; i < values.length; i++) {
-    if (!values[i][0] && !values[i][1]) {
-      targetRow = 3 + i;
-      break;
+  return {
+    month: "Oktyabr",
+    day: day,
+    row: row,
+    addedAmount: sheetAmount
+  };
+}
+
+function buildMainKeyboard(expId, suggestedCat, branch) {
+  const buttons = [];
+  if (suggestedCat) {
+    buttons.push([{ text: "✅ " + suggestedCat.label + "-ga saqlash", callback_data: "cat_" + expId + "_" + suggestedCat.key }]);
+  }
+  const other = branch === "uchtepa" ? "sergeli" : "uchtepa";
+  const otherName = branch === "uchtepa" ? "🏬 Sergeliga o‘tkazish" : "🏢 Uchtepaga o‘tkazish";
+  buttons.push([
+    { text: "📍 Filial: " + BRANCHES[branch].name, callback_data: "noop" },
+    { text: otherName, callback_data: "swbranch_" + expId + "_" + other }
+  ]);
+  buttons.push([
+    { text: "👥 Xodimlar (19)", callback_data: "grp_" + expId + "_xodimlar" },
+    { text: "🏢 Ofis & Xo‘jalik (11)", callback_data: "grp_" + expId + "_ofis" }
+  ]);
+  buttons.push([
+    { text: "📢 Marketing (7)", callback_data: "grp_" + expId + "_marketing" },
+    { text: "🔄 Qarz & Boshqa (5)", callback_data: "grp_" + expId + "_boshqa" }
+  ]);
+  buttons.push([{ text: "❌ Bekor qilish", callback_data: "cancel_" + expId }]);
+  return { inline_keyboard: buttons };
+}
+
+function buildGroupKeyboard(expId, grpKey) {
+  const list = CATEGORIES.filter(c => c.group === grpKey);
+  const buttons = [];
+  for (let i = 0; i < list.length; i += 2) {
+    const row = [{ text: list[i].label, callback_data: "cat_" + expId + "_" + list[i].key }];
+    if (i + 1 < list.length) {
+      row.push({ text: list[i + 1].label, callback_data: "cat_" + expId + "_" + list[i + 1].key });
     }
+    buttons.push(row);
   }
-
-  sheet.getRange(targetRow, startCol, 1, 2).setValues([[title, amount]]);
+  buttons.push([
+    { text: "⬅️ Boshqa bo‘limlar", callback_data: "back_" + expId },
+    { text: "❌ Bekor qilish", callback_data: "cancel_" + expId }
+  ]);
+  return { inline_keyboard: buttons };
 }
 
-// =================================================================
-// 🛠 ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ
-// =================================================================
-function formatNum(num) {
-  return num.toString().replace(/\B(?=(\d{3})+(?!\d))/g, " ");
-}
-
-function escapeHtml(text) {
-  if (!text) return "";
-  return text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
-}
-
-function parseFromText(txt) {
-  if (!txt) return null;
-  const nameM = txt.match(/Nomi:\s*([^\n]+)/i);
-  const sumM = txt.match(/Summa:\s*([\d\s\.,]+)/i);
-  const grpM = txt.match(/Guruh:\s*([^\n]+)/i);
-  const usrM = txt.match(/Foydalanuvchi:\s*([^\n]+)/i);
-  const timM = txt.match(/Vaqti:\s*([^\n]+)/i);
-  if (nameM && sumM) {
-    const amt = parseFloat(sumM[1].replace(/[^\d\.,]/g, '').replace(/,/g, '.'));
-    return {
-      title: nameM[1].trim(),
-      amount: amt,
-      groupTitle: grpM ? grpM[1].trim() : "Guruh",
-      fullName: usrM ? usrM[1].trim() : "Foydalanuvchi",
-      timeStr: timM ? timM[1].trim() : ""
-    };
+function formatAmountDisplay(num) {
+  const formatted = num.toString().replace(/\B(?=(\d{3})+(?!\d))/g, " ");
+  if (num >= 1000) {
+    const thousands = (num / 1000).toString().replace(/\B(?=(\d{3})+(?!\d))/g, " ");
+    return formatted + " so'm (" + thousands + " ming)";
   }
-  return null;
+  return formatted + " ming so'm";
 }
 
 function sendTelegram(method, payload) {
@@ -296,4 +436,16 @@ function sendTelegram(method, payload) {
     muteHttpExceptions: true
   };
   return UrlFetchApp.fetch(url, options);
+}
+
+// =================================================================
+// 🔗 1 BOSISHDA TELEGRAM WEBHOOKNI GOOGLE APPS SCRIPTGA ULASH:
+// =================================================================
+// 1. Deploy -> New Deployment -> Web App -> Anyone (Barcha uchun) -> Deploy.
+// 2. Web App URL manzilini nusxalang va quyidagi qatorga qo'ying:
+// 3. Ushbu 'setTelegramWebhook' funksiyasini 1 marta 'Run' qiling!
+function setTelegramWebhook() {
+  const webAppUrl = "SIZNING_WEB_APP_URL_MANZILINGIZ";
+  const res = sendTelegram("setWebhook", { url: webAppUrl });
+  Logger.log(res.getContentText());
 }
