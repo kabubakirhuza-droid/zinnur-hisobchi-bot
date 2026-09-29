@@ -17,7 +17,13 @@ server.listen(PORT, () => {
 });
 
 const botToken = process.env.BOT_TOKEN;
-const adminId = process.env.ADMIN_ID || '716752890';
+// Support multiple admins (Abubakirxoja: 5709203608, Ismoil: 716752890)
+const defaultAdmins = ['5709203608', '716752890'];
+const envAdmins = process.env.ADMIN_IDS || process.env.ADMIN_ID || '';
+const ADMIN_IDS = Array.from(new Set([
+  ...defaultAdmins,
+  ...envAdmins.split(',').map(s => s.trim()).filter(Boolean)
+]));
 
 if (!botToken || botToken === 'your_telegram_bot_token_here') {
   console.error('[CRITICAL] BOT_TOKEN не указан в файле .env!');
@@ -148,7 +154,7 @@ function buildGroupKeyboard(expenseId, groupKey) {
 // /start command
 bot.start(async (ctx) => {
   const senderId = String(ctx.from?.id);
-  const isAdmin = senderId === String(adminId);
+  const isAdmin = ADMIN_IDS.includes(senderId);
 
   let message = `Assalomu alaykum, <b>${ctx.from?.first_name || 'Foydalanuvchi'}</b>!\n\n`;
   message += `Men <b>ZIN-NUR Xisobchi Boti</b>man.\n\n`;
@@ -159,10 +165,10 @@ bot.start(async (ctx) => {
   message += `<code>/hisob #arenda 41527000</code>\n\n`;
 
   if (isAdmin) {
-    message += `👑 <b>Siz Administrator sifatida tizimga ulangansiz!</b>\n`;
+    message += `👑 <b>Siz Administrator sifatida tizimga ulangansiz!</b> (ID: <code>${senderId}</code>)\n`;
     message += `Barcha xarajatlarni tasdiqlash va bo'limlarga biriktirish xabarlari sizga yuboriladi.`;
   } else {
-    message += `📩 Xarajatingiz administrator tasdiqlashi uchun yuboriladi va Google Jadvalga saqlanadi.`;
+    message += `📩 Xarajatingiz administrator tasdiqlashi uchun yuboriladi va Google Jadvalga saqlanadi. (Sizning ID: <code>${senderId}</code>)`;
   }
 
   await ctx.replyWithHTML(message);
@@ -216,6 +222,7 @@ bot.hears(/^\/(?:hisob|xarajat)(?:@\w+)?(?:\s+.*)?$/is, async (ctx) => {
     rawAmount,
     date: dateTime.date,
     time: dateTime.time,
+    adminMessages: {}, // { [adminId]: messageId }
     createdAt: new Date().toISOString()
   };
 
@@ -232,22 +239,22 @@ bot.hears(/^\/(?:hisob|xarajat)(?:@\w+)?(?:\s+.*)?$/is, async (ctx) => {
 
   const keyboard = buildMainKeyboard(expenseId, suggestedCategory);
 
-  try {
-    const sentMsg = await bot.telegram.sendMessage(adminId, adminMessage, {
-      parse_mode: 'HTML',
-      ...keyboard
-    });
-
-    expenseData.adminMessageId = sentMsg.message_id;
-    pendingExpenses.set(expenseId, expenseData);
-    savePendingExpenses(pendingExpenses);
-    console.log(`[EXPENSE QUEUED] ID: ${expenseId} -> "${expenseTitle}" (${amount}) from ${userName}`);
-  } catch (err) {
-    console.error('[CRITICAL] Admin xabari yuborilmadi:', err.message);
-    if (ctx.chat.type === 'private') {
-      await ctx.reply(`⚠️ Xarajatni adminga yuborishda xatolik: ${err.message}`);
+  // Send to all registered admins
+  for (const adminId of ADMIN_IDS) {
+    try {
+      const sentMsg = await bot.telegram.sendMessage(adminId, adminMessage, {
+        parse_mode: 'HTML',
+        ...keyboard
+      });
+      expenseData.adminMessages[adminId] = sentMsg.message_id;
+    } catch (err) {
+      console.warn(`[ADMIN NOTIFY WARNING] ID: ${adminId} ga yuborilmadi (${err.message}). Ehtimol botga /start bosmagan.`);
     }
   }
+
+  pendingExpenses.set(expenseId, expenseData);
+  savePendingExpenses(pendingExpenses);
+  console.log(`[EXPENSE QUEUED] ID: ${expenseId} -> "${expenseTitle}" (${amount}) from ${userName}`);
 });
 
 // Group selection callback (grp_<expenseId>_<groupKey>)
@@ -345,15 +352,30 @@ bot.action(/^cat_([^_]+_\d+)_(.+)$/, async (ctx) => {
     pendingExpenses.delete(expenseId);
     savePendingExpenses(pendingExpenses);
 
+    const adminWhosaved = ctx.from?.first_name || 'Admin';
+
     let successText = `✅ <b>Google Jadvalga muvaffaqiyatli saqlandi!</b>\n\n`;
     successText += `📊 <b>Kategoriya:</b> <code>${result.category}</code>\n`;
     successText += `📝 <b>Nomi:</b> ${expenseData.expenseTitle}\n`;
     successText += `💵 <b>Yozilgan summa:</b> ${result.addedAmount} ming (${formatAmountDisplay(expenseData.amount)})\n`;
     successText += `📅 <b>Oy va kun:</b> ${result.month}, ${result.day}-kun (Qator: ${result.row})\n`;
     successText += `👤 <b>Yuboruvchi:</b> ${expenseData.userName} (${expenseData.userHandle})\n`;
+    successText += `👑 <b>Tasdiqladi:</b> ${adminWhosaved}\n`;
     successText += `🕒 <b>Vaqti:</b> ${expenseData.date} ${expenseData.time}`;
 
     await ctx.editMessageText(successText, { parse_mode: 'HTML' });
+
+    // Update messages for all other admins too
+    if (expenseData.adminMessages) {
+      for (const [admId, msgId] of Object.entries(expenseData.adminMessages)) {
+        if (String(admId) !== String(ctx.from?.id)) {
+          try {
+            await bot.telegram.editMessageText(admId, msgId, null, successText, { parse_mode: 'HTML' });
+          } catch (e) {}
+        }
+      }
+    }
+
     console.log(`[SAVED TO SHEETS] ${result.category} | Row: ${result.row} | Amount: ${result.addedAmount}`);
   } catch (err) {
     console.error('[SHEETS ERROR]', err.message);
@@ -371,7 +393,8 @@ bot.action(/^cancel_([^_]+_\d+)$/, async (ctx) => {
   pendingExpenses.delete(expenseId);
   savePendingExpenses(pendingExpenses);
 
-  let cancelText = `❌ <b>Xarajat arizasi bekor qilindi.</b>\n\n`;
+  const adminWhocancelled = ctx.from?.first_name || 'Admin';
+  let cancelText = `❌ <b>Xarajat arizasi bekor qilindi (${adminWhocancelled} tomonidan).</b>\n\n`;
   if (expenseData) {
     cancelText += `📝 <b>Nomi:</b> ${expenseData.expenseTitle}\n`;
     cancelText += `💵 <b>Summa:</b> ${formatAmountDisplay(expenseData.amount)}\n`;
@@ -388,7 +411,7 @@ bot.action(/^cancel_([^_]+_\d+)$/, async (ctx) => {
 
 // Start bot polling
 bot.launch().then(() => {
-  console.log(`🚀 Zinnur Hisobchi Bot muvaffaqiyatli ishga tushdi! Admin ID: ${adminId}`);
+  console.log(`🚀 Zinnur Hisobchi Bot muvaffaqiyatli ishga tushdi! Adminlar: ${ADMIN_IDS.join(', ')}`);
 }).catch((err) => {
   console.error('[BOT LAUNCH ERROR]', err.message);
 });
