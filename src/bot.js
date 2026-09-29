@@ -17,7 +17,7 @@ server.listen(PORT, () => {
 });
 
 const botToken = process.env.BOT_TOKEN;
-const adminId = process.env.ADMIN_ID || '5709203608';
+const adminId = process.env.ADMIN_ID || '716752890';
 
 if (!botToken || botToken === 'your_telegram_bot_token_here') {
   console.error('[CRITICAL] BOT_TOKEN не указан в файле .env!');

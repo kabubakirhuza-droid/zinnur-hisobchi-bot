@@ -2,27 +2,24 @@
 // 📊 TELEGRAM EXPENSE BOT ДЛЯ GOOGLE APPS SCRIPT (БЕЗ СЕРВЕРА 24/7)
 // =================================================================
 
-// 1. Токен бота Telegram
 const BOT_TOKEN = "8760033475:AAGd1me4GB-F9u2ZZmeBilrQKuOtWU8QYRg";
+const ADMIN_ID = "716752890";
+const SPREADSHEET_ID = "1SrAtH5bLRXD3KrMw0km-F8T0CmpzaNO8Xy1n0sOiAYE";
 
-// 2. Telegram ID администратора (куда приходят запросы на выбор категории)
-const ADMIN_ID = "5709203608";
-
-// 3. Колонки категорий согласно структуре Google Sheets:
-// A (1) - Nomi, B (2) - Narh  --> Svet uchun
-// C (3) - Nomi, D (4) - Narh  --> Gaz uchun
-// E (5) - Nomi, F (6) - Narh  --> Ovqat
-// G (7) - Nomi, H (8) - Narh  --> Kunlik xarajat
-// I (9) - Nomi, J (10) - Narh --> Oylik
-// K (11) - Nomi, L (12) - Narh -> Avans
+// Колонки категорий согласно структуре Google Sheets:
 const CATEGORIES = {
-  svet_uchun:     { label: "💡 Svet uchun", col: 1 },
-  gaz_uchun:      { label: "🔥 Gaz uchun", col: 3 },
-  ovqat:          { label: "🍲 Ovqat", col: 5 },
-  kunlik_xarajat: { label: "🛒 Kunlik xarajat", col: 7 },
-  oylik:          { label: "💵 Oylik", col: 9 },
-  avans:          { label: "💳 Avans", col: 11 }
+  svet_uchun:     { label: "💡 Svet uchun", col: 1 },  // A, B
+  gaz_uchun:      { label: "🔥 Gaz uchun", col: 3 },   // C, D
+  ovqat:          { label: "🍲 Ovqat", col: 5 },       // E, F
+  kunlik_xarajat: { label: "🛒 Kunlik xarajat", col: 7 }, // G, H
+  oylik:          { label: "💵 Oylik", col: 9 },       // I, J
+  avans:          { label: "💳 Avans", col: 11 }       // K, L
 };
+
+// Проверка работы веб-приложения при открытии в браузере
+function doGet(e) {
+  return ContentService.createTextOutput("✅ Telegram Expense Bot is Active and Running 24/7!");
+}
 
 // =================================================================
 // 🌐 WEBHOOK ОБРАБОТЧИК (Вызывается Telegram при каждом действии)
@@ -63,7 +60,6 @@ function handleExpenseMessage(msg) {
   let title = "";
   let amount = 0;
 
-  // Парсинг: название и сумма (в конце или в начале)
   const endMatch = payload.match(/^(.*?)\s+((?:\d{1,3}(?:[\s\.]\d{3})*(?:,\d+)?|\d+(?:[,\.]\d+)?))\s*$/);
   const startMatch = payload.match(/^((?:\d{1,3}(?:[\s\.]\d{3})*(?:,\d+)?|\d+(?:[,\.]\d+)?))\s+(.*?)\s*$/);
 
@@ -90,7 +86,7 @@ function handleExpenseMessage(msg) {
   const timeStr = Utilities.formatDate(now, "Asia/Tashkent", "dd.MM.yyyy HH:mm");
   const expId = "exp_" + now.getTime() + "_" + Math.floor(Math.random() * 1000);
 
-  // Сохраняем в кэш Google Apps Script (на 6 часов)
+  // Сохраняем в кэш Google Apps Script
   const data = {
     title: title,
     amount: amount,
@@ -103,7 +99,7 @@ function handleExpenseMessage(msg) {
   };
   CacheService.getScriptCache().put(expId, JSON.stringify(data), 21600);
 
-  // Создаем кнопки с категориями
+  // Клавиатура с категориями для админа
   const keyboard = {
     inline_keyboard: [
       [
@@ -235,10 +231,17 @@ function handleCategoryCallback(cb) {
 }
 
 // =================================================================
-// 📊 ЗАПИСЬ В GOOGLE ТАБЛИЦУ (В нужные колонки категории со строки 3)
+// 📊 ЗАПИСЬ В GOOGLE ТАБЛИЦУ (В нужные колонки со строки 3)
 // =================================================================
 function saveToSheet(startCol, title, amount) {
-  const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheets()[0];
+  let ss;
+  try {
+    ss = SpreadsheetApp.openById(SPREADSHEET_ID);
+  } catch (e) {
+    ss = SpreadsheetApp.getActiveSpreadsheet();
+  }
+
+  const sheet = ss.getSheets()[0];
   const values = sheet.getRange(3, startCol, 1000, 2).getValues();
 
   let targetRow = 3 + values.length;
@@ -293,15 +296,4 @@ function sendTelegram(method, payload) {
     muteHttpExceptions: true
   };
   return UrlFetchApp.fetch(url, options);
-}
-
-// =================================================================
-// 🚀 ПРИВЯЗКА TELEGRAM К GOOGLE SHEETS (Запустить 1 раз)
-// =================================================================
-function setWebhook() {
-  // Вставьте сюда URL полученный после Развертывания (Deploy)
-  const webAppUrl = "ВСТАВЬТЕ_СЮДА_ВАШ_WEB_APP_URL";
-
-  const res = sendTelegram("setWebhook", { url: webAppUrl });
-  Logger.log(res.getContentText());
 }
