@@ -13,14 +13,14 @@ export const BRANCHES = {
     name: '🏢 Uchtepa',
     spreadsheetId: '1SrAtH5bLRXD3KrMw0km-F8T0CmpzaNO8Xy1n0sOiAYE',
     sheetTitle: 'X N',
-    adminIds: ['716752890', '5709203608']
+    adminIds: ['716752890']
   },
   sergeli: {
     key: 'sergeli',
     name: '🏬 Sergeli',
     spreadsheetId: '1uYxa1MNQxx0cmvScS69JpBtrnSpkVkrkpsG_nF9x6Mc',
     sheetTitle: 'X N',
-    adminIds: ['1586005242', '716752890', '5709203608']
+    adminIds: ['716752890']
   }
 };
 
