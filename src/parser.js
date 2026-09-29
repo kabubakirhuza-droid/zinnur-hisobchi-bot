@@ -1,15 +1,4 @@
-/**
- * Parser for /hisob expense messages.
- *
- * Supported formats:
- * - /hisob такси 20000
- * - /hisob такси 20 000
- * - /hisob обед в ресторане 150 000
- * - /hisob продукты 1250.50
- * - /hisob продукты 1250,50
- * - /hisob 50000 обед
- * - /hisob@bot_username такси 20000
- */
+import { CATEGORIES, normalizeName } from './sheets.js';
 
 /**
  * Normalizes number string by removing spaces, commas to dots, etc.
@@ -18,16 +7,34 @@
  */
 function parseNumericAmount(str) {
   if (!str) return null;
-  // Replace comma with dot for decimal support
   const cleaned = str.replace(/\s+/g, '').replace(/,/g, '.');
   const num = parseFloat(cleaned);
   return isNaN(num) || num <= 0 ? null : num;
 }
 
 /**
+ * Extracts hashtag matching any category.
+ * e.g. #tushlik, #arenda, #remont, #ustozlar_av
+ */
+function extractHashtagCategory(text) {
+  const hashMatch = text.match(/#([\w\u0400-\u04FF_'-]+)/i);
+  if (!hashMatch) return { cleanedText: text, matchedCategory: null };
+
+  const rawTag = hashMatch[1];
+  const normTag = normalizeName(rawTag);
+
+  const matched = CATEGORIES.find(c => {
+    return normalizeName(c.key) === normTag || normalizeName(c.label) === normTag;
+  });
+
+  const cleanedText = text.replace(hashMatch[0], '').trim();
+  return { cleanedText, matchedCategory: matched || null, rawTag };
+}
+
+/**
  * Parses a telegram message text for /hisob command.
  * @param {string} rawText
- * @returns {{ success: boolean, title?: string, amount?: number, rawAmount?: string, error?: string }}
+ * @returns {{ success: boolean, title?: string, amount?: number, rawAmount?: string, category?: Object, error?: string }}
  */
 export function parseExpenseCommand(rawText) {
   if (!rawText || typeof rawText !== 'string') {
@@ -36,15 +43,15 @@ export function parseExpenseCommand(rawText) {
 
   const trimmed = rawText.trim();
 
-  // Check if message starts with /hisob (case-insensitive, optional @bot_username)
-  const hisobRegex = /^\/hisob(?:@\w+)?(?:\s+(.*))?$/is;
+  // Match /hisob or /xarajat
+  const hisobRegex = /^\/(?:hisob|xarajat)(?:@\w+)?(?:\s+(.*))?$/is;
   const match = trimmed.match(hisobRegex);
 
   if (!match) {
     return { success: false, error: 'Сообщение не начинается с команды /hisob' };
   }
 
-  const payload = match[1] ? match[1].trim() : '';
+  let payload = match[1] ? match[1].trim() : '';
   if (!payload) {
     return {
       success: false,
@@ -52,13 +59,16 @@ export function parseExpenseCommand(rawText) {
     };
   }
 
-  // Remove common trailing currency units if present (например: сум, sum, so'm, som, руб, rub, $, usd)
+  // Check for hashtag category
+  const { cleanedText, matchedCategory } = extractHashtagCategory(payload);
+  payload = cleanedText;
+
+  // Remove trailing currency signs
   const sanitizedPayload = payload
     .replace(/\s*(?:so['’`]?m|сум|sum|руб(?:лей|ля|\.)?|rub|\$|usd|eur|€)\s*$/i, '')
     .trim();
 
-  // Pattern 1: Amount at the END: "такси 20 000" or "обед в кафе 50000" or "продукты 125.50"
-  // Look for digits (possibly separated by spaces/dots/commas) at the end of the line
+  // Pattern 1: Amount at the END: "такси 20 000" or "obed 45000"
   const endAmountRegex = /^(.*?)\s+((?:\d{1,3}(?:[\s\.]\d{3})*(?:,\d+)?|\d+(?:[,\.]\d+)?))\s*$/;
   const endMatch = sanitizedPayload.match(endAmountRegex);
 
@@ -72,7 +82,8 @@ export function parseExpenseCommand(rawText) {
         success: true,
         title,
         amount,
-        rawAmount
+        rawAmount,
+        category: matchedCategory
       };
     }
   }
@@ -91,7 +102,8 @@ export function parseExpenseCommand(rawText) {
         success: true,
         title,
         amount,
-        rawAmount
+        rawAmount,
+        category: matchedCategory
       };
     }
   }

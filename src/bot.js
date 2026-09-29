@@ -4,13 +4,13 @@ import { Telegraf, Markup } from 'telegraf';
 import fs from 'fs';
 import path from 'path';
 import { parseExpenseCommand } from './parser.js';
-import { appendExpenseByCategory, CATEGORIES } from './sheets.js';
+import { appendExpenseByCategory, CATEGORIES, GROUPS, UZ_MONTHS } from './sheets.js';
 
 // Lightweight HTTP server for Render.com Web Service health check
 const PORT = process.env.PORT || 3000;
 const server = http.createServer((req, res) => {
   res.writeHead(200, { 'Content-Type': 'text/plain; charset=utf-8' });
-  res.end('Telegram Expense Bot is running 24/7 on Render!');
+  res.end('Telegram Zinnur Hisobchi Bot is running 24/7 on Render!');
 });
 server.listen(PORT, () => {
   console.log(`🌐 Health check server listening on port ${PORT}`);
@@ -27,7 +27,7 @@ if (!botToken || botToken === 'your_telegram_bot_token_here') {
 const bot = new Telegraf(botToken);
 const timeZone = process.env.TIMEZONE || 'Asia/Tashkent';
 
-// Persistent storage file for pending expenses across bot restarts
+// Persistent storage file for pending expenses
 const DB_FILE = path.resolve(process.cwd(), 'pending_expenses.json');
 
 function loadPendingExpenses() {
@@ -54,361 +54,345 @@ function savePendingExpenses(map) {
 const pendingExpenses = loadPendingExpenses();
 const processingSet = new Set();
 
-/**
- * Formats current date and time according to the configured timezone.
- * @returns {{ date: string, time: string }}
- */
-function getFormattedDateTime() {
-  const now = new Date();
+function formatDateTime(date = new Date()) {
+  try {
+    const parts = new Intl.DateTimeFormat('ru-RU', {
+      timeZone,
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+      hour12: false
+    }).formatToParts(date);
 
-  const dateFormatter = new Intl.DateTimeFormat('ru-RU', {
-    timeZone,
-    day: '2-digit',
-    month: '2-digit',
-    year: 'numeric'
-  });
+    const map = {};
+    for (const p of parts) map[p.type] = p.value;
 
-  const timeFormatter = new Intl.DateTimeFormat('ru-RU', {
-    timeZone,
-    hour: '2-digit',
-    minute: '2-digit',
-    hour12: false
-  });
+    return {
+      date: `${map.day}.${map.month}.${map.year}`,
+      time: `${map.hour}:${map.minute}:${map.second}`
+    };
+  } catch (e) {
+    const d = new Date();
+    return {
+      date: d.toISOString().split('T')[0],
+      time: d.toTimeString().split(' ')[0]
+    };
+  }
+}
 
-  return {
-    date: dateFormatter.format(now),
-    time: timeFormatter.format(now)
-  };
+function formatAmountDisplay(num) {
+  const formatted = num.toLocaleString('ru-RU');
+  if (num >= 1000) {
+    const thousands = (num / 1000).toLocaleString('ru-RU');
+    return `${formatted} so'm (${thousands} ming)`;
+  }
+  return `${formatted} ming so'm`;
 }
 
 /**
- * Builds the inline keyboard for selecting expense category.
- * @param {string} expenseId
+ * Builds the initial Group Selection keyboard or Suggested Category keyboard.
  */
-function buildCategoryKeyboard(expenseId) {
-  const buttons = Object.values(CATEGORIES).map((cat) =>
-    Markup.button.callback(cat.label, `cat:${cat.key}:${expenseId}`)
-  );
+function buildMainKeyboard(expenseId, suggestedCategory = null) {
+  const buttons = [];
 
-  // Layout buttons in 2 columns
-  const rows = [];
-  for (let i = 0; i < buttons.length; i += 2) {
-    rows.push(buttons.slice(i, i + 2));
+  if (suggestedCategory) {
+    buttons.push([
+      Markup.button.callback(`✅ ${suggestedCategory.label}-ga saqlash`, `cat_${expenseId}_${suggestedCategory.key}`)
+    ]);
   }
 
-  // Add Cancel button
-  rows.push([Markup.button.callback('❌ Bekor qilish', `cancel:${expenseId}`)]);
+  // 4 Main Groups
+  buttons.push([
+    Markup.button.callback('👥 Xodimlar (19)', `grp_${expenseId}_xodimlar`),
+    Markup.button.callback('🏢 Ofis & Xo‘jalik (11)', `grp_${expenseId}_ofis`)
+  ]);
+  buttons.push([
+    Markup.button.callback('📢 Marketing & Sotuv (7)', `grp_${expenseId}_marketing`),
+    Markup.button.callback('🔄 Qarz & Boshqa (5)', `grp_${expenseId}_boshqa`)
+  ]);
+  buttons.push([
+    Markup.button.callback('❌ Bekor qilish', `cancel_${expenseId}`)
+  ]);
 
-  return Markup.inlineKeyboard(rows);
+  return Markup.inlineKeyboard(buttons);
 }
 
 /**
- * Formats numbers with spaces for readability (e.g. 20000 -> 20 000).
+ * Builds category buttons for a specific group.
  */
-function formatNumber(num) {
-  return num.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ' ');
-}
+function buildGroupKeyboard(expenseId, groupKey) {
+  const groupCategories = CATEGORIES.filter(c => c.group === groupKey);
+  const buttons = [];
 
-/**
- * Fallback parser directly from message text if memory state is not found.
- */
-function extractExpenseFromMessageText(msgText) {
-  if (!msgText || typeof msgText !== 'string') return null;
-  if (msgText.includes('Google Sheets-ga muvaffaqiyatli saqlandi') || msgText.includes('Xarajat bekor qilindi')) {
-    return null;
-  }
-
-  const groupMatch = msgText.match(/Guruh:\s*([^\n]+)/i);
-  const userMatch = msgText.match(/Foydalanuvchi:\s*([^\n]+)/i);
-  const nameMatch = msgText.match(/Nomi:\s*([^\n]+)/i);
-  const amountMatch = msgText.match(/Summa:\s*([\d\s\.,]+)/i);
-  const timeMatch = msgText.match(/Vaqti:\s*([^\n]+)/i);
-
-  if (nameMatch && amountMatch) {
-    const rawAmt = amountMatch[1].replace(/[^\d\.,]/g, '').replace(/,/g, '.');
-    const amount = parseFloat(rawAmt);
-    if (!isNaN(amount) && amount > 0) {
-      return {
-        groupTitle: groupMatch ? groupMatch[1].trim() : 'Guruh',
-        userName: userMatch ? userMatch[1].trim() : 'Foydalanuvchi',
-        userUsername: '',
-        expenseTitle: nameMatch[1].trim(),
-        amount: amount,
-        date: timeMatch ? timeMatch[1].split(' ')[0] : '',
-        time: timeMatch ? timeMatch[1].split(' ')[1] || '' : ''
-      };
+  for (let i = 0; i < groupCategories.length; i += 2) {
+    const row = [];
+    row.push(Markup.button.callback(groupCategories[i].label, `cat_${expenseId}_${groupCategories[i].key}`));
+    if (i + 1 < groupCategories.length) {
+      row.push(Markup.button.callback(groupCategories[i + 1].label, `cat_${expenseId}_${groupCategories[i + 1].key}`));
     }
+    buttons.push(row);
   }
-  return null;
+
+  // Navigation row
+  buttons.push([
+    Markup.button.callback('⬅️ Boshqa bo‘limlar', `back_${expenseId}`),
+    Markup.button.callback('❌ Bekor qilish', `cancel_${expenseId}`)
+  ]);
+
+  return Markup.inlineKeyboard(buttons);
 }
 
-/**
- * Handles incoming /hisob messages.
- */
-async function handleExpenseMessage(ctx) {
-  const text = ctx.message?.text;
-  if (!text) return;
+// /start command
+bot.start(async (ctx) => {
+  const senderId = String(ctx.from?.id);
+  const isAdmin = senderId === String(adminId);
 
-  // 1. Parse command and payload
-  const parsed = parseExpenseCommand(text);
+  let message = `Assalomu alaykum, <b>${ctx.from?.first_name || 'Foydalanuvchi'}</b>!\n\n`;
+  message += `Men <b>ZIN-NUR Xisobchi Boti</b>man.\n\n`;
+  message += `📝 <b>Qanday ishlatiladi:</b>\n`;
+  message += `Guruhda yoki shu yerda xarajatni yozing:\n`;
+  message += `<code>/hisob taksi 25 000</code>\n`;
+  message += `<code>/hisob #tushlik 35000 osh</code>\n`;
+  message += `<code>/hisob #arenda 41527000</code>\n\n`;
+
+  if (isAdmin) {
+    message += `👑 <b>Siz Administrator sifatida tizimga ulangansiz!</b>\n`;
+    message += `Barcha xarajatlarni tasdiqlash va bo'limlarga biriktirish xabarlari sizga yuboriladi.`;
+  } else {
+    message += `📩 Xarajatingiz administrator tasdiqlashi uchun yuboriladi va Google Jadvalga saqlanadi.`;
+  }
+
+  await ctx.replyWithHTML(message);
+});
+
+// /tags or /kategoriya command to list all tags
+bot.command(['tags', 'teglar', 'kategoriyalar'], async (ctx) => {
+  let text = `📋 <b>Barcha mavjud bo‘limlar va teglar (43 ta):</b>\n\n`;
+
+  for (const grp of GROUPS) {
+    const list = CATEGORIES.filter(c => c.group === grp.key);
+    text += `<b>${grp.label}:</b>\n`;
+    text += list.map(c => `• <code>#${c.key}</code> — ${c.label}`).join('\n');
+    text += `\n\n`;
+  }
+
+  text += `💡 <i>Masalan: <code>/hisob #tushlik 20 000 somsa</code></i>`;
+  await ctx.replyWithHTML(text);
+});
+
+// Handle /hisob and /xarajat commands
+bot.hears(/^\/(?:hisob|xarajat)(?:@\w+)?(?:\s+.*)?$/is, async (ctx) => {
+  const parsed = parseExpenseCommand(ctx.message.text);
+
   if (!parsed.success) {
-    console.warn(`[PARSER WARNING] Пропущено некорректное сообщение: "${text}". Причина: ${parsed.error}`);
+    if (ctx.chat.type === 'private') {
+      await ctx.replyWithHTML(`⚠️ <b>Xatolik:</b> ${parsed.error}\n\nMisol: <code>/hisob taksi 20000</code>`);
+    }
     return;
   }
 
-  // 2. Extract user and chat info
-  const from = ctx.from || {};
-  const chat = ctx.chat || {};
+  const { title: expenseTitle, amount, rawAmount, category: suggestedCategory } = parsed;
+  const user = ctx.from;
+  const userName = [user.first_name, user.last_name].filter(Boolean).join(' ') || 'Noma\'lum';
+  const userHandle = user.username ? `@${user.username}` : userName;
+  const chatTitle = ctx.chat.title || 'Shaxsiy chat';
+  const dateTime = formatDateTime();
 
-  const firstName = from.first_name || '';
-  const lastName = from.last_name || '';
-  const fullName = `${firstName} ${lastName}`.trim() || from.username || `User_${from.id}`;
-  const username = from.username ? `@${from.username}` : 'Mavjud emas';
+  const expenseId = `${ctx.message.message_id}_${Date.now()}`;
 
-  let groupTitle = 'Личные сообщения';
-  if (chat.type === 'group' || chat.type === 'supergroup') {
-    groupTitle = chat.title || `Группа ${chat.id}`;
-  } else if (chat.type === 'channel') {
-    groupTitle = chat.title || `Канал ${chat.id}`;
-  }
-
-  const { date, time } = getFormattedDateTime();
-  const expenseId = `exp_${Date.now()}_${Math.floor(Math.random() * 1000)}`;
-
-  // Save to persistent pending store
   const expenseData = {
-    id: expenseId,
-    date,
-    time,
-    userName: fullName,
-    userUsername: username,
-    userId: from.id,
-    groupTitle,
-    chatId: chat.id,
-    messageId: ctx.message?.message_id,
-    expenseTitle: parsed.title,
-    amount: parsed.amount
+    expenseId,
+    chatId: ctx.chat.id,
+    chatTitle,
+    messageId: ctx.message.message_id,
+    userId: user.id,
+    userHandle,
+    userName,
+    expenseTitle,
+    amount,
+    rawAmount,
+    date: dateTime.date,
+    time: dateTime.time,
+    createdAt: new Date().toISOString()
   };
+
   pendingExpenses.set(expenseId, expenseData);
   savePendingExpenses(pendingExpenses);
 
-  // 3. Send notification to Admin with interactive Category selection
-  const adminMessageText =
-    `📥 <b>Yangi xarajat keldi!</b>\n\n` +
-    `📍 <b>Guruh:</b> ${groupTitle}\n` +
-    `👤 <b>Foydalanuvchi:</b> ${fullName} (${username})\n` +
-    `📝 <b>Nomi:</b> <code>${parsed.title}</code>\n` +
-    `💰 <b>Summa:</b> <b>${formatNumber(parsed.amount)} so'm</b>\n` +
-    `⏰ <b>Vaqti:</b> ${date} ${time}\n\n` +
-    `<i>Qaysi kategoriyaga yozilsin? Tanlang:</i> 👇`;
+  let adminMessage = `🔔 <b>Yangi xarajat arizasi!</b>\n\n`;
+  adminMessage += `👤 <b>Yuboruvchi:</b> ${userName} (${userHandle})\n`;
+  adminMessage += `📍 <b>Manba:</b> ${chatTitle}\n`;
+  adminMessage += `📝 <b>Nomi:</b> <code>${expenseTitle}</code>\n`;
+  adminMessage += `💵 <b>Summa:</b> <b>${formatAmountDisplay(amount)}</b>\n`;
+  adminMessage += `📅 <b>Sana va vaqt:</b> ${dateTime.date} ${dateTime.time}\n\n`;
+  adminMessage += `👇 <b>Xarajat qaysi bo‘limga tegishli?</b>`;
+
+  const keyboard = buildMainKeyboard(expenseId, suggestedCategory);
 
   try {
-    await ctx.telegram.sendMessage(adminId, adminMessageText, {
+    const sentMsg = await bot.telegram.sendMessage(adminId, adminMessage, {
       parse_mode: 'HTML',
-      ...buildCategoryKeyboard(expenseId)
+      ...keyboard
     });
-    console.log(`[INFO] [${date} ${time}] Yangi xarajat adminga yuborildi (${adminId}): "${parsed.title}" - ${parsed.amount}`);
-  } catch (error) {
-    console.error(`[ERROR] Adminga xabar yuborishda xatolik (${adminId}):`, error.message);
-    if (error.message.includes('chat not found') || error.message.includes('bot was blocked')) {
-      console.warn(`[WARNING] Admin (${adminId}) botga /start bosmagan! Bot unga birinchi bo'lib yozishi uchun admin botga /start yozishi kerak.`);
+
+    expenseData.adminMessageId = sentMsg.message_id;
+    pendingExpenses.set(expenseId, expenseData);
+    savePendingExpenses(pendingExpenses);
+    console.log(`[EXPENSE QUEUED] ID: ${expenseId} -> "${expenseTitle}" (${amount}) from ${userName}`);
+  } catch (err) {
+    console.error('[CRITICAL] Admin xabari yuborilmadi:', err.message);
+    if (ctx.chat.type === 'private') {
+      await ctx.reply(`⚠️ Xarajatni adminga yuborishda xatolik: ${err.message}`);
     }
   }
-}
-
-// Intercept all messages starting with /hisob
-bot.hears(/^\/hisob/i, async (ctx) => {
-  await handleExpenseMessage(ctx);
 });
 
-// Handle Category Selection callback query from Admin
-bot.action(/^cat:(\w+):(.+)$/, async (ctx) => {
-  const categoryKey = ctx.match[1];
-  const expenseId = ctx.match[2];
+// Group selection callback (grp_<expenseId>_<groupKey>)
+bot.action(/^grp_([^_]+_\d+)_(.+)$/, async (ctx) => {
+  const expenseId = ctx.match[1];
+  const groupKey = ctx.match[2];
+  const expenseData = pendingExpenses.get(expenseId);
 
-  // Prevent double clicks
+  if (!expenseData) {
+    await ctx.answerCbQuery('⚠️ Bu ariza eskirgan yoki bekor qilingan.');
+    return;
+  }
+
+  const groupInfo = GROUPS.find(g => g.key === groupKey);
+  const groupLabel = groupInfo ? groupInfo.label : groupKey;
+
+  const keyboard = buildGroupKeyboard(expenseId, groupKey);
+
+  let text = `📂 <b>${groupLabel}</b> bo‘limi:\n\n`;
+  text += `📝 <b>Nomi:</b> <code>${expenseData.expenseTitle}</code>\n`;
+  text += `💵 <b>Summa:</b> <b>${formatAmountDisplay(expenseData.amount)}</b>\n`;
+  text += `👤 <b>Yuboruvchi:</b> ${expenseData.userName}\n\n`;
+  text += `Kerakli kategoriyani tanlang:`;
+
+  try {
+    await ctx.editMessageText(text, {
+      parse_mode: 'HTML',
+      ...keyboard
+    });
+    await ctx.answerCbQuery();
+  } catch (e) {
+    await ctx.answerCbQuery('Xatolik yuz berdi');
+  }
+});
+
+// Back to main categories menu callback (back_<expenseId>)
+bot.action(/^back_([^_]+_\d+)$/, async (ctx) => {
+  const expenseId = ctx.match[1];
+  const expenseData = pendingExpenses.get(expenseId);
+
+  if (!expenseData) {
+    await ctx.answerCbQuery('⚠️ Bu ariza topilmadi.');
+    return;
+  }
+
+  const keyboard = buildMainKeyboard(expenseId);
+
+  let text = `🔔 <b>Xarajatni bo‘limga biriktirish:</b>\n\n`;
+  text += `👤 <b>Yuboruvchi:</b> ${expenseData.userName} (${expenseData.userHandle})\n`;
+  text += `📝 <b>Nomi:</b> <code>${expenseData.expenseTitle}</code>\n`;
+  text += `💵 <b>Summa:</b> <b>${formatAmountDisplay(expenseData.amount)}</b>\n`;
+  text += `📅 <b>Sana:</b> ${expenseData.date} ${expenseData.time}\n\n`;
+  text += `👇 Kerakli bo‘limni tanlang:`;
+
+  try {
+    await ctx.editMessageText(text, {
+      parse_mode: 'HTML',
+      ...keyboard
+    });
+    await ctx.answerCbQuery();
+  } catch (e) {
+    await ctx.answerCbQuery();
+  }
+});
+
+// Category selection callback (cat_<expenseId>_<categoryKey>)
+bot.action(/^cat_([^_]+_\d+)_(.+)$/, async (ctx) => {
+  const expenseId = ctx.match[1];
+  const categoryKey = ctx.match[2];
+
   if (processingSet.has(expenseId)) {
-    try { await ctx.answerCbQuery('⏳ Saqlanmoqda, kuting...'); } catch {}
+    await ctx.answerCbQuery('⏳ Saqlanmoqda, kuting...');
     return;
   }
 
-  const rawMsgText = ctx.callbackQuery?.message?.text || '';
-  let expense = pendingExpenses.get(expenseId);
-
-  if (!expense) {
-    expense = extractExpenseFromMessageText(rawMsgText);
-  }
-
-  if (!expense) {
-    try { await ctx.answerCbQuery('✅ Bu xarajat allaqachon saqlangan.'); } catch {}
-    try { await ctx.editMessageReplyMarkup({ inline_keyboard: [] }); } catch {}
-    return;
-  }
-
-  const category = CATEGORIES[categoryKey];
-  if (!category) {
-    try { await ctx.answerCbQuery('❌ Noto\'g\'ri kategoriya!'); } catch {}
+  const expenseData = pendingExpenses.get(expenseId);
+  if (!expenseData) {
+    await ctx.answerCbQuery('⚠️ Bu xarajat allaqachon ko‘rib chiqilgan yoki topilmadi.');
+    try {
+      await ctx.editMessageText('⚠️ Bu xarajat allaqachon ko‘rib chiqilgan yoki eskirgan.');
+    } catch (e) {}
     return;
   }
 
   processingSet.add(expenseId);
-  try { await ctx.answerCbQuery(`⏳ "${category.sheetTitleHeader}" kategoriyasiga saqlanmoqda...`); } catch {}
+  await ctx.answerCbQuery('⏳ Google Jadvalga saqlanmoqda...');
 
-  // 1. Save to Google Sheets
   try {
-    await appendExpenseByCategory(categoryKey, {
-      expenseTitle: expense.expenseTitle,
-      amount: expense.amount
+    const result = await appendExpenseByCategory(categoryKey, {
+      expenseTitle: expenseData.expenseTitle,
+      amount: expenseData.amount,
+      date: new Date()
     });
-    console.log(`[OK] Saqlandi: [${category.label}] "${expense.expenseTitle}" - ${expense.amount}`);
-  } catch (sheetErr) {
-    console.error(`[ERROR] Google Sheets-ga yozishda xatolik:`, sheetErr.message);
-    try { await ctx.reply(`❌ Google Sheets-ga yozishda xatolik: ${sheetErr.message}`); } catch {}
-    processingSet.delete(expenseId);
-    return;
-  }
 
-  // Remove from pending storage
-  pendingExpenses.delete(expenseId);
-  savePendingExpenses(pendingExpenses);
-
-  const expenseDate = expense.date || getFormattedDateTime().date;
-  const expenseTime = expense.time || getFormattedDateTime().time;
-
-  // 2. Update Admin message in private chat (removes buttons)
-  const updatedAdminText =
-    `✅ <b>Google Sheets-ga muvaffaqiyatli saqlandi!</b>\n\n` +
-    `📁 <b>Kategoriya:</b> ${category.label}\n` +
-    `📝 <b>Nomi:</b> <code>${expense.expenseTitle}</code>\n` +
-    `💰 <b>Summa:</b> <b>${formatNumber(expense.amount)} so'm</b>\n` +
-    `👤 <b>Foydalanuvchi:</b> ${expense.userName} ${expense.userUsername ? `(${expense.userUsername})` : ''}\n` +
-    `📍 <b>Guruh:</b> ${expense.groupTitle || 'Guruh'}\n` +
-    `⏰ <b>Vaqti:</b> ${expenseDate} ${expenseTime}`;
-
-  try {
-    await ctx.editMessageText(updatedAdminText, { parse_mode: 'HTML' });
-  } catch (editErr) {
-    // Ignore harmless 'message is not modified' Telegram error
-    if (!editErr.message.includes('message is not modified')) {
-      console.warn('[WARNING] Edit message error:', editErr.message);
-    }
-  }
-
-  // 3. Notify the group that the admin approved and saved the expense
-  if (expense.chatId && String(expense.chatId) !== String(adminId)) {
-    try {
-      const groupNotificationText =
-        `✅ <b>Xarajat tasdiqlandi va jadvalga kiritildi!</b>\n\n` +
-        `📁 <b>Kategoriya:</b> ${category.label}\n` +
-        `📝 <b>Nomi:</b> <code>${expense.expenseTitle}</code>\n` +
-        `💰 <b>Summa:</b> <b>${formatNumber(expense.amount)} so'm</b>\n` +
-        `👤 <b>Kiritgan:</b> ${expense.userName}\n` +
-        `👨‍💼 <b>Tasdiqladi:</b> Administrator`;
-
-      const sendOptions = { parse_mode: 'HTML' };
-      if (expense.messageId) {
-        sendOptions.reply_parameters = { message_id: expense.messageId };
-      }
-
-      await ctx.telegram.sendMessage(expense.chatId, groupNotificationText, sendOptions);
-      console.log(`[INFO] Guruhga (${expense.chatId}) tasdiqlash xabari yuborildi.`);
-    } catch (groupErr) {
-      console.warn(`[WARNING] Guruhga xabar yuborishda xatolik:`, groupErr.message);
-    }
-  }
-
-  processingSet.delete(expenseId);
-});
-
-// Handle Cancel callback query from Admin
-bot.action(/^cancel:(.+)$/, async (ctx) => {
-  const expenseId = ctx.match[1];
-  const rawMsgText = ctx.callbackQuery?.message?.text || '';
-  let expense = pendingExpenses.get(expenseId) || extractExpenseFromMessageText(rawMsgText);
-
-  if (expense) {
     pendingExpenses.delete(expenseId);
     savePendingExpenses(pendingExpenses);
 
-    const updatedText =
-      `❌ <b>Xarajat bekor qilindi (saqlanmadi)</b>\n\n` +
-      `📝 <b>Nomi:</b> ${expense.expenseTitle}\n` +
-      `💰 <b>Summa:</b> ${formatNumber(expense.amount)} so'm\n` +
-      `👤 <b>Foydalanuvchi:</b> ${expense.userName}`;
+    let successText = `✅ <b>Google Jadvalga muvaffaqiyatli saqlandi!</b>\n\n`;
+    successText += `📊 <b>Kategoriya:</b> <code>${result.category}</code>\n`;
+    successText += `📝 <b>Nomi:</b> ${expenseData.expenseTitle}\n`;
+    successText += `💵 <b>Yozilgan summa:</b> ${result.addedAmount} ming (${formatAmountDisplay(expenseData.amount)})\n`;
+    successText += `📅 <b>Oy va kun:</b> ${result.month}, ${result.day}-kun (Qator: ${result.row})\n`;
+    successText += `👤 <b>Yuboruvchi:</b> ${expenseData.userName} (${expenseData.userHandle})\n`;
+    successText += `🕒 <b>Vaqti:</b> ${expenseData.date} ${expenseData.time}`;
 
-    try {
-      await ctx.editMessageText(updatedText, { parse_mode: 'HTML' });
-      await ctx.answerCbQuery('❌ Bekor qilindi');
-    } catch {}
-
-    // Notify group about rejection
-    if (expense.chatId && String(expense.chatId) !== String(adminId)) {
-      try {
-        const groupRejectText =
-          `❌ <b>Xarajat rad etildi (saqlanmadi)</b>\n\n` +
-          `📝 <b>Nomi:</b> <code>${expense.expenseTitle}</code>\n` +
-          `💰 <b>Summa:</b> <b>${formatNumber(expense.amount)} so'm</b>\n` +
-          `👤 <b>Kiritgan:</b> ${expense.userName}`;
-
-        const sendOptions = { parse_mode: 'HTML' };
-        if (expense.messageId) {
-          sendOptions.reply_parameters = { message_id: expense.messageId };
-        }
-
-        await ctx.telegram.sendMessage(expense.chatId, groupRejectText, sendOptions);
-      } catch {}
-    }
-  } else {
-    try { await ctx.answerCbQuery('✅ Allaqachon bekor qilingan'); } catch {}
-    try { await ctx.editMessageReplyMarkup({ inline_keyboard: [] }); } catch {}
+    await ctx.editMessageText(successText, { parse_mode: 'HTML' });
+    console.log(`[SAVED TO SHEETS] ${result.category} | Row: ${result.row} | Amount: ${result.addedAmount}`);
+  } catch (err) {
+    console.error('[SHEETS ERROR]', err.message);
+    await ctx.reply(`❌ <b>Xatolik yuz berdi:</b> ${err.message}`, { parse_mode: 'HTML' });
+  } finally {
+    processingSet.delete(expenseId);
   }
 });
 
-// /start command
-bot.command('start', (ctx) => {
-  if (ctx.chat.type === 'private') {
-    const isOwner = String(ctx.from.id) === String(adminId);
-    ctx.reply(
-      `👋 <b>Assalomu alaykum!</b>\n\n` +
-      `Men guruhdagi xarajatlarni boshqaruvchi va Google Sheets-ga saqlovchi botman.\n\n` +
-      (isOwner
-        ? `👑 <b>Siz administrator (${adminId}) sifatida aniqlandingiz!</b>\n` +
-          `Guruhda yozilgan barcha xarajatlar tasdiqlash uchun shu yerga keladi.`
-        : `📌 Guruhda xarajatlarni <code>/hisob nom summa</code> ko'rinishida yuborishingiz mumkin.`),
-      { parse_mode: 'HTML' }
-    );
+// Cancel callback (cancel_<expenseId>)
+bot.action(/^cancel_([^_]+_\d+)$/, async (ctx) => {
+  const expenseId = ctx.match[1];
+  const expenseData = pendingExpenses.get(expenseId);
+
+  pendingExpenses.delete(expenseId);
+  savePendingExpenses(pendingExpenses);
+
+  let cancelText = `❌ <b>Xarajat arizasi bekor qilindi.</b>\n\n`;
+  if (expenseData) {
+    cancelText += `📝 <b>Nomi:</b> ${expenseData.expenseTitle}\n`;
+    cancelText += `💵 <b>Summa:</b> ${formatAmountDisplay(expenseData.amount)}\n`;
+    cancelText += `👤 <b>Yuboruvchi:</b> ${expenseData.userName}`;
+  }
+
+  try {
+    await ctx.editMessageText(cancelText, { parse_mode: 'HTML' });
+    await ctx.answerCbQuery('Bekor qilindi');
+  } catch (e) {
+    await ctx.answerCbQuery();
   }
 });
 
-// Global error handlers
-bot.catch((err, ctx) => {
-  console.error(`[BOT ERROR] Xatolik (Update ID: ${ctx?.update?.update_id}):`, err);
+// Start bot polling
+bot.launch().then(() => {
+  console.log(`🚀 Zinnur Hisobchi Bot muvaffaqiyatli ishga tushdi! Admin ID: ${adminId}`);
+}).catch((err) => {
+  console.error('[BOT LAUNCH ERROR]', err.message);
 });
 
-process.on('unhandledRejection', (reason) => {
-  console.error('[UNHANDLED REJECTION] Sabab:', reason);
-});
-
-process.on('uncaughtException', (err) => {
-  console.error('[UNCAUGHT EXCEPTION] Xatolik:', err);
-});
-
-// Launch bot
-function startBot() {
-  console.log('⏳ Telegram-bot ishga tushmoqda...');
-  bot.launch({
-    allowedUpdates: ['message', 'callback_query']
-  }).then(() => {
-    console.log(`🚀 Bot muvaffaqiyatli ishga tushdi! Admin ID: ${adminId}`);
-  }).catch((err) => {
-    console.error('❌ Botni ishga tushirishda xatolik:', err.message);
-    console.log('🔄 5 soniyadan so\'ng qayta uriniladi...');
-    setTimeout(startBot, 5000);
-  });
-}
-
-startBot();
-
-// Enable graceful stop
+// Graceful shutdown
 process.once('SIGINT', () => bot.stop('SIGINT'));
 process.once('SIGTERM', () => bot.stop('SIGTERM'));
