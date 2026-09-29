@@ -4,7 +4,7 @@ import { Telegraf, Markup } from 'telegraf';
 import fs from 'fs';
 import path from 'path';
 import { parseExpenseCommand } from './parser.js';
-import { appendExpenseByCategory, CATEGORIES, GROUPS, UZ_MONTHS } from './sheets.js';
+import { appendExpenseByCategory, createNewMonthBlock, CATEGORIES, GROUPS, UZ_MONTHS } from './sheets.js';
 
 // Lightweight HTTP server for Render.com Web Service health check
 const PORT = process.env.PORT || 3000;
@@ -16,8 +16,7 @@ server.listen(PORT, () => {
   console.log(`🌐 Health check server listening on port ${PORT}`);
 });
 
-const botToken = process.env.BOT_TOKEN;
-// Support multiple admins (Abubakirxoja: 5709203608, Ismoil: 716752890)
+const botToken = process.env.BOT_TOKEN || '8760033475:AAGd1me4GB-F9u2ZZmeBilrQKuOtWU8QYRg';
 const defaultAdmins = ['5709203608', '716752890'];
 const envAdmins = process.env.ADMIN_IDS || process.env.ADMIN_ID || '';
 const ADMIN_IDS = Array.from(new Set([
@@ -25,15 +24,9 @@ const ADMIN_IDS = Array.from(new Set([
   ...envAdmins.split(',').map(s => s.trim()).filter(Boolean)
 ]));
 
-if (!botToken || botToken === 'your_telegram_bot_token_here') {
-  console.error('[CRITICAL] BOT_TOKEN не указан в файле .env!');
-  process.exit(1);
-}
-
 const bot = new Telegraf(botToken);
 const timeZone = process.env.TIMEZONE || 'Asia/Tashkent';
 
-// Persistent storage file for pending expenses
 const DB_FILE = path.resolve(process.cwd(), 'pending_expenses.json');
 
 function loadPendingExpenses() {
@@ -98,9 +91,6 @@ function formatAmountDisplay(num) {
   return `${formatted} ming so'm`;
 }
 
-/**
- * Builds the initial Group Selection keyboard or Suggested Category keyboard.
- */
 function buildMainKeyboard(expenseId, suggestedCategory = null) {
   const buttons = [];
 
@@ -110,7 +100,6 @@ function buildMainKeyboard(expenseId, suggestedCategory = null) {
     ]);
   }
 
-  // 4 Main Groups
   buttons.push([
     Markup.button.callback('👥 Xodimlar (19)', `grp_${expenseId}_xodimlar`),
     Markup.button.callback('🏢 Ofis & Xo‘jalik (11)', `grp_${expenseId}_ofis`)
@@ -126,9 +115,6 @@ function buildMainKeyboard(expenseId, suggestedCategory = null) {
   return Markup.inlineKeyboard(buttons);
 }
 
-/**
- * Builds category buttons for a specific group.
- */
 function buildGroupKeyboard(expenseId, groupKey) {
   const groupCategories = CATEGORIES.filter(c => c.group === groupKey);
   const buttons = [];
@@ -142,7 +128,6 @@ function buildGroupKeyboard(expenseId, groupKey) {
     buttons.push(row);
   }
 
-  // Navigation row
   buttons.push([
     Markup.button.callback('⬅️ Boshqa bo‘limlar', `back_${expenseId}`),
     Markup.button.callback('❌ Bekor qilish', `cancel_${expenseId}`)
@@ -166,7 +151,8 @@ bot.start(async (ctx) => {
 
   if (isAdmin) {
     message += `👑 <b>Siz Administrator sifatida tizimga ulangansiz!</b> (ID: <code>${senderId}</code>)\n`;
-    message += `Barcha xarajatlarni tasdiqlash va bo'limlarga biriktirish xabarlari sizga yuboriladi.`;
+    message += `Barcha xarajatlarni tasdiqlash va bo'limlarga biriktirish xabarlari sizga yuboriladi.\n\n`;
+    message += `⚙️ Yangi oy ochish buyrug‘i: <code>/yangi_oy Noyabr</code>`;
   } else {
     message += `📩 Xarajatingiz administrator tasdiqlashi uchun yuboriladi va Google Jadvalga saqlanadi. (Sizning ID: <code>${senderId}</code>)`;
   }
@@ -174,7 +160,7 @@ bot.start(async (ctx) => {
   await ctx.replyWithHTML(message);
 });
 
-// /tags or /kategoriya command to list all tags
+// /tags command
 bot.command(['tags', 'teglar', 'kategoriyalar'], async (ctx) => {
   let text = `📋 <b>Barcha mavjud bo‘limlar va teglar (43 ta):</b>\n\n`;
 
@@ -187,6 +173,31 @@ bot.command(['tags', 'teglar', 'kategoriyalar'], async (ctx) => {
 
   text += `💡 <i>Masalan: <code>/hisob #tushlik 20 000 somsa</code></i>`;
   await ctx.replyWithHTML(text);
+});
+
+// /yangi_oy command for admin to create next month block on the left
+bot.command(['yangi_oy', 'new_month', 'ochish'], async (ctx) => {
+  const senderId = String(ctx.from?.id);
+  if (!ADMIN_IDS.includes(senderId)) {
+    return ctx.reply('⚠️ Bu buyruq faqat administratorlar uchun.');
+  }
+
+  const parts = ctx.message.text.trim().split(/\s+/);
+  let monthName = parts[1];
+  if (!monthName) {
+    const nextMonthIdx = (new Date().getMonth() + 1) % 12;
+    monthName = UZ_MONTHS[nextMonthIdx];
+  }
+
+  await ctx.reply(`⏳ "${monthName}" oyi uchun chap tomonda yangi jadval ochilmoqda...`);
+
+  try {
+    const spreadsheetId = process.env.SPREADSHEET_ID || '1SrAtH5bLRXD3KrMw0km-F8T0CmpzaNO8Xy1n0sOiAYE';
+    await createNewMonthBlock(spreadsheetId, monthName, 'X N');
+    await ctx.reply(`✅ <b>Muvaffaqiyatli!</b>\nGoogle Sheets "X N" varag‘ida chap tomonda <b>${monthName}</b> oyi jadvali ochildi!`, { parse_mode: 'HTML' });
+  } catch (err) {
+    await ctx.reply(`❌ <b>Xatolik:</b> ${err.message}`, { parse_mode: 'HTML' });
+  }
 });
 
 // Handle /hisob and /xarajat commands
@@ -222,12 +233,22 @@ bot.hears(/^\/(?:hisob|xarajat)(?:@\w+)?(?:\s+.*)?$/is, async (ctx) => {
     rawAmount,
     date: dateTime.date,
     time: dateTime.time,
-    adminMessages: {}, // { [adminId]: messageId }
+    adminMessages: {},
     createdAt: new Date().toISOString()
   };
 
   pendingExpenses.set(expenseId, expenseData);
   savePendingExpenses(pendingExpenses);
+
+  // In group, give instant polite confirmation
+  if (ctx.chat.type !== 'private') {
+    try {
+      await ctx.reply(`📩 <i>Xarajat arizasi qabul qilindi va adminga yuborildi.</i>`, {
+        parse_mode: 'HTML',
+        reply_to_message_id: ctx.message.message_id
+      });
+    } catch (e) {}
+  }
 
   let adminMessage = `🔔 <b>Yangi xarajat arizasi!</b>\n\n`;
   adminMessage += `👤 <b>Yuboruvchi:</b> ${userName} (${userHandle})\n`;
@@ -290,7 +311,7 @@ bot.action(/^grp_([^_]+_\d+)_(.+)$/, async (ctx) => {
   }
 });
 
-// Back to main categories menu callback (back_<expenseId>)
+// Back callback
 bot.action(/^back_([^_]+_\d+)$/, async (ctx) => {
   const expenseId = ctx.match[1];
   const expenseData = pendingExpenses.get(expenseId);
@@ -320,7 +341,7 @@ bot.action(/^back_([^_]+_\d+)$/, async (ctx) => {
   }
 });
 
-// Category selection callback (cat_<expenseId>_<categoryKey>)
+// Category selection callback
 bot.action(/^cat_([^_]+_\d+)_(.+)$/, async (ctx) => {
   const expenseId = ctx.match[1];
   const categoryKey = ctx.match[2];
@@ -365,7 +386,6 @@ bot.action(/^cat_([^_]+_\d+)_(.+)$/, async (ctx) => {
 
     await ctx.editMessageText(successText, { parse_mode: 'HTML' });
 
-    // Update messages for all other admins too
     if (expenseData.adminMessages) {
       for (const [admId, msgId] of Object.entries(expenseData.adminMessages)) {
         if (String(admId) !== String(ctx.from?.id)) {
@@ -385,7 +405,7 @@ bot.action(/^cat_([^_]+_\d+)_(.+)$/, async (ctx) => {
   }
 });
 
-// Cancel callback (cancel_<expenseId>)
+// Cancel callback
 bot.action(/^cancel_([^_]+_\d+)$/, async (ctx) => {
   const expenseId = ctx.match[1];
   const expenseData = pendingExpenses.get(expenseId);
