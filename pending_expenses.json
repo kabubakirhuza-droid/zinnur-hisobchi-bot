@@ -247,5 +247,81 @@
     "time": "17:24:42",
     "createdAt": "2026-09-29T12:24:42.617Z",
     "adminMessageId": 80
+  },
+  "85_1790685107567": {
+    "expenseId": "85_1790685107567",
+    "chatId": -5243765455,
+    "chatTitle": "Xisob-kitob",
+    "messageId": 85,
+    "userId": 5709203608,
+    "userHandle": "@Abubakirxoja",
+    "userName": "Абубакирхужа 🕊️",
+    "expenseTitle": "taksi",
+    "amount": 25000,
+    "rawAmount": "25000",
+    "date": "29.09.2026",
+    "time": "17:31:47",
+    "adminMessages": {
+      "716752890": 101,
+      "5709203608": 98
+    },
+    "createdAt": "2026-09-29T12:31:47.568Z"
+  },
+  "86_1790685107571": {
+    "expenseId": "86_1790685107571",
+    "chatId": -5243765455,
+    "chatTitle": "Xisob-kitob",
+    "messageId": 86,
+    "userId": 5709203608,
+    "userHandle": "@Abubakirxoja",
+    "userName": "Абубакирхужа 🕊️",
+    "expenseTitle": "taksi",
+    "amount": 25000,
+    "rawAmount": "25000",
+    "date": "29.09.2026",
+    "time": "17:31:47",
+    "adminMessages": {
+      "716752890": 103,
+      "5709203608": 100
+    },
+    "createdAt": "2026-09-29T12:31:47.571Z"
+  },
+  "89_1790685107573": {
+    "expenseId": "89_1790685107573",
+    "chatId": -5243765455,
+    "chatTitle": "Xisob-kitob",
+    "messageId": 89,
+    "userId": 5709203608,
+    "userHandle": "@Abubakirxoja",
+    "userName": "Абубакирхужа 🕊️",
+    "expenseTitle": "taksi",
+    "amount": 25000,
+    "rawAmount": "25000",
+    "date": "29.09.2026",
+    "time": "17:31:47",
+    "adminMessages": {
+      "716752890": 102,
+      "5709203608": 99
+    },
+    "createdAt": "2026-09-29T12:31:47.573Z"
+  },
+  "90_1790685107575": {
+    "expenseId": "90_1790685107575",
+    "chatId": -5243765455,
+    "chatTitle": "Xisob-kitob",
+    "messageId": 90,
+    "userId": 5709203608,
+    "userHandle": "@Abubakirxoja",
+    "userName": "Абубакирхужа 🕊️",
+    "expenseTitle": "ovqat",
+    "amount": 25000,
+    "rawAmount": "25000",
+    "date": "29.09.2026",
+    "time": "17:31:47",
+    "adminMessages": {
+      "716752890": 105,
+      "5709203608": 104
+    },
+    "createdAt": "2026-09-29T12:31:47.575Z"
   }
 }

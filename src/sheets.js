@@ -7,6 +7,23 @@ export const UZ_MONTHS = [
   'Iyul', 'Avgust', 'Sentyabr', 'Oktyabr', 'Noyabr', 'Dekabr'
 ];
 
+export const BRANCHES = {
+  uchtepa: {
+    key: 'uchtepa',
+    name: '🏢 Uchtepa',
+    spreadsheetId: '1SrAtH5bLRXD3KrMw0km-F8T0CmpzaNO8Xy1n0sOiAYE',
+    sheetTitle: 'X N',
+    adminIds: ['716752890', '5709203608']
+  },
+  sergeli: {
+    key: 'sergeli',
+    name: '🏬 Sergeli',
+    spreadsheetId: '1uYxa1MNQxx0cmvScS69JpBtrnSpkVkrkpsG_nF9x6Mc',
+    sheetTitle: 'X N',
+    adminIds: ['1586005242', '716752890', '5709203608']
+  }
+};
+
 export const CATEGORIES = [
   // Xodimlar
   { key: 'ustozlar_av', label: 'Ustozlar av.', group: 'xodimlar', groupName: '👥 Xodimlar' },
@@ -133,7 +150,7 @@ export async function getSheetsClient() {
 }
 
 /**
- * Gets sheet metadata and finds the active month block in 'X N' (defaults to leftmost month e.g. Oktyabr).
+ * Gets sheet metadata and finds the active month block in 'X N' for a given spreadsheet.
  */
 export async function getOrInitMonthBlock(spreadsheetId, sheetTitle = 'X N', date = new Date()) {
   const sheets = await getSheetsClient();
@@ -146,7 +163,6 @@ export async function getOrInitMonthBlock(spreadsheetId, sheetTitle = 'X N', dat
   const row1 = res.data.values?.[0] || [];
   const row2 = res.data.values?.[1] || [];
 
-  // Find leftmost month in row 1 (starts at column C / index 2)
   let monthColIndex = -1;
   let monthName = '';
 
@@ -158,13 +174,11 @@ export async function getOrInitMonthBlock(spreadsheetId, sheetTitle = 'X N', dat
     }
   }
 
-  // Fallback to column index 2 ('Oktyabr') if not explicitly found
   if (monthColIndex === -1) {
     monthColIndex = 2;
     monthName = 'Oktyabr';
   }
 
-  // Build category column map for the active month block
   const categoryMap = {};
   for (let c = monthColIndex; c < monthColIndex + 88 && c < (row2.length + 88); c += 2) {
     const header = row2[c] || CATEGORIES[(c - monthColIndex) / 2]?.label;
@@ -178,7 +192,6 @@ export async function getOrInitMonthBlock(spreadsheetId, sheetTitle = 'X N', dat
     }
   }
 
-  // Map all known CATEGORIES
   for (let i = 0; i < CATEGORIES.length; i++) {
     const cat = CATEGORIES[i];
     const c = monthColIndex + (i * 2);
@@ -233,7 +246,6 @@ export async function createNewMonthBlock(spreadsheetId, newMonthName, sheetTitl
     }
   });
 
-  // Set Row 1 and Row 2 headers
   const newRow1 = [newMonthName];
   const newRow2 = [];
   for (const cat of CATEGORIES) {
@@ -256,7 +268,6 @@ export async function createNewMonthBlock(spreadsheetId, newMonthName, sheetTitl
     requestBody: { values: [newRow2] }
   });
 
-  // Set bottom formulas for row 38
   const formulaRow = [];
   for (let c = 2; c < 2 + 88; c += 2) {
     const colLetter = indexToCol(c);
@@ -274,13 +285,12 @@ export async function createNewMonthBlock(spreadsheetId, newMonthName, sheetTitl
 }
 
 /**
- * Appends or accumulates an expense item in sheet 'X N'.
+ * Appends or accumulates an expense item in sheet 'X N' for a specific branch.
  */
-export async function appendExpenseByCategory(categoryKeyOrLabel, { expenseTitle, amount, date = new Date() }) {
-  const spreadsheetId = process.env.SPREADSHEET_ID || '1SrAtH5bLRXD3KrMw0km-F8T0CmpzaNO8Xy1n0sOiAYE';
-  const sheetTitle = process.env.SPREADSHEET_SHEET_NAME && process.env.SPREADSHEET_SHEET_NAME !== 'AUTO' 
-    ? process.env.SPREADSHEET_SHEET_NAME 
-    : 'X N';
+export async function appendExpenseByCategory(categoryKeyOrLabel, { expenseTitle, amount, branch = 'uchtepa', date = new Date() }) {
+  const branchConfig = BRANCHES[branch] || BRANCHES.uchtepa;
+  const spreadsheetId = branchConfig.spreadsheetId;
+  const sheetTitle = branchConfig.sheetTitle;
 
   const sheets = await getSheetsClient();
   const { monthName, categoryMap } = await getOrInitMonthBlock(spreadsheetId, sheetTitle, date);
@@ -292,11 +302,9 @@ export async function appendExpenseByCategory(categoryKeyOrLabel, { expenseTitle
     throw new Error(`Категория "${categoryKeyOrLabel}" не найдена в таблице!`);
   }
 
-  // Day of month: 1..31 -> Row 3..33 (rowIndex = day + 2)
   const day = date.getDate();
   const rowIndex = day + 2;
 
-  // In this table, amounts are stored in thousands (ming so'm): e.g. 25000 -> 25, 145000 -> 145
   let sheetAmount = amount;
   if (amount >= 1000) {
     sheetAmount = amount / 1000;
@@ -335,6 +343,8 @@ export async function appendExpenseByCategory(categoryKeyOrLabel, { expenseTitle
   });
 
   return {
+    branch: branchConfig.name,
+    branchKey: branchConfig.key,
     month: monthName,
     day,
     row: rowIndex,

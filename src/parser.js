@@ -1,10 +1,5 @@
 import { CATEGORIES, normalizeName } from './sheets.js';
 
-/**
- * Normalizes number string by removing spaces, commas to dots, etc.
- * @param {string} str
- * @returns {number|null}
- */
 function parseNumericAmount(str) {
   if (!str) return null;
   const cleaned = str.replace(/\s+/g, '').replace(/,/g, '.');
@@ -12,16 +7,38 @@ function parseNumericAmount(str) {
   return isNaN(num) || num <= 0 ? null : num;
 }
 
-/**
- * Extracts hashtag matching any category.
- * e.g. #tushlik, #arenda, #remont, #ustozlar_av
- */
+function extractBranch(text, chatTitle = '') {
+  let cleaned = text;
+  let branch = null;
+
+  // Check in text for explicit branch mentions
+  if (/\b(?:sergeli|сергели|sergili|#sergeli)\b/i.test(cleaned)) {
+    branch = 'sergeli';
+    cleaned = cleaned.replace(/\b(?:sergeli|сергели|sergili|#sergeli)\b/gi, '').trim();
+  } else if (/\b(?:uchtepa|учтепа|uсhteрa|#uchtepa)\b/i.test(cleaned)) {
+    branch = 'uchtepa';
+    cleaned = cleaned.replace(/\b(?:uchtepa|учтепа|uсhteрa|#uchtepa)\b/gi, '').trim();
+  } else if (/sergeli|сергели/i.test(chatTitle)) {
+    branch = 'sergeli';
+  } else if (/uchtepa|учтепа/i.test(chatTitle)) {
+    branch = 'uchtepa';
+  } else {
+    branch = 'uchtepa'; // Default branch
+  }
+
+  return { cleaned, branch };
+}
+
 function extractHashtagCategory(text) {
   const hashMatch = text.match(/#([\w\u0400-\u04FF_'-]+)/i);
   if (!hashMatch) return { cleanedText: text, matchedCategory: null };
 
   const rawTag = hashMatch[1];
   const normTag = normalizeName(rawTag);
+
+  if (normTag === 'uchtepa' || normTag === 'sergeli') {
+    return { cleanedText: text, matchedCategory: null };
+  }
 
   const matched = CATEGORIES.find(c => {
     return normalizeName(c.key) === normTag || normalizeName(c.label) === normTag;
@@ -32,18 +49,20 @@ function extractHashtagCategory(text) {
 }
 
 /**
- * Parses a telegram message text for /hisob command.
- * @param {string} rawText
- * @returns {{ success: boolean, title?: string, amount?: number, rawAmount?: string, category?: Object, error?: string }}
+ * Parses a telegram message text for /hisob command with branch detection.
+ *
+ * Formats:
+ * - /hisob uchtepa taksi 25000
+ * - /hisob sergeli taksi 25000
+ * - /hisob taksi 25000 (auto-detects from group or defaults to uchtepa)
+ * - /hisob #sergeli #tushlik 35000 osh
  */
-export function parseExpenseCommand(rawText) {
+export function parseExpenseCommand(rawText, chatTitle = '') {
   if (!rawText || typeof rawText !== 'string') {
     return { success: false, error: 'Текст сообщения пуст' };
   }
 
   const trimmed = rawText.trim();
-
-  // Match /hisob or /xarajat
   const hisobRegex = /^\/(?:hisob|xarajat)(?:@\w+)?(?:\s+(.*))?$/is;
   const match = trimmed.match(hisobRegex);
 
@@ -55,20 +74,23 @@ export function parseExpenseCommand(rawText) {
   if (!payload) {
     return {
       success: false,
-      error: 'Не указаны данные расхода. Пример: /hisob такси 20000'
+      error: 'Не указаны данные расхода. Пример: /hisob uchtepa taksi 20000 или /hisob sergeli taksi 20000'
     };
   }
 
-  // Check for hashtag category
+  // 1. Extract branch
+  const { cleaned: afterBranchText, branch } = extractBranch(payload, chatTitle);
+  payload = afterBranchText;
+
+  // 2. Extract hashtag category
   const { cleanedText, matchedCategory } = extractHashtagCategory(payload);
   payload = cleanedText;
 
-  // Remove trailing currency signs
   const sanitizedPayload = payload
     .replace(/\s*(?:so['’`]?m|сум|sum|руб(?:лей|ля|\.)?|rub|\$|usd|eur|€)\s*$/i, '')
     .trim();
 
-  // Pattern 1: Amount at the END: "такси 20 000" or "obed 45000"
+  // Pattern 1: Amount at the END
   const endAmountRegex = /^(.*?)\s+((?:\d{1,3}(?:[\s\.]\d{3})*(?:,\d+)?|\d+(?:[,\.]\d+)?))\s*$/;
   const endMatch = sanitizedPayload.match(endAmountRegex);
 
@@ -83,12 +105,13 @@ export function parseExpenseCommand(rawText) {
         title,
         amount,
         rawAmount,
+        branch,
         category: matchedCategory
       };
     }
   }
 
-  // Pattern 2: Amount at the START: "20 000 такси" or "50000 обед"
+  // Pattern 2: Amount at the START
   const startAmountRegex = /^((?:\d{1,3}(?:[\s\.]\d{3})*(?:,\d+)?|\d+(?:[,\.]\d+)?))\s+(.*?)\s*$/;
   const startMatch = sanitizedPayload.match(startAmountRegex);
 
@@ -103,6 +126,7 @@ export function parseExpenseCommand(rawText) {
         title,
         amount,
         rawAmount,
+        branch,
         category: matchedCategory
       };
     }
@@ -110,6 +134,6 @@ export function parseExpenseCommand(rawText) {
 
   return {
     success: false,
-    error: 'Не удалось определить название расхода и сумму. Пример: /hisob такси 20000'
+    error: 'Не удалось определить название расхода и сумму. Пример: /hisob uchtepa taksi 20000'
   };
 }

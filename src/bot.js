@@ -4,9 +4,8 @@ import { Telegraf, Markup } from 'telegraf';
 import fs from 'fs';
 import path from 'path';
 import { parseExpenseCommand } from './parser.js';
-import { appendExpenseByCategory, createNewMonthBlock, CATEGORIES, GROUPS, UZ_MONTHS } from './sheets.js';
+import { appendExpenseByCategory, createNewMonthBlock, CATEGORIES, GROUPS, BRANCHES, UZ_MONTHS } from './sheets.js';
 
-// Lightweight HTTP server for Render.com Web Service health check
 const PORT = process.env.PORT || 3000;
 const server = http.createServer((req, res) => {
   res.writeHead(200, { 'Content-Type': 'text/plain; charset=utf-8' });
@@ -17,15 +16,13 @@ server.listen(PORT, () => {
 });
 
 const botToken = process.env.BOT_TOKEN || '8760033475:AAGd1me4GB-F9u2ZZmeBilrQKuOtWU8QYRg';
-const defaultAdmins = ['5709203608', '716752890'];
-const envAdmins = process.env.ADMIN_IDS || process.env.ADMIN_ID || '';
-const ADMIN_IDS = Array.from(new Set([
-  ...defaultAdmins,
-  ...envAdmins.split(',').map(s => s.trim()).filter(Boolean)
-]));
-
 const bot = new Telegraf(botToken);
 const timeZone = process.env.TIMEZONE || 'Asia/Tashkent';
+
+const ALL_ADMIN_IDS = Array.from(new Set([
+  ...BRANCHES.uchtepa.adminIds,
+  ...BRANCHES.sergeli.adminIds
+]));
 
 const DB_FILE = path.resolve(process.cwd(), 'pending_expenses.json');
 
@@ -91,7 +88,7 @@ function formatAmountDisplay(num) {
   return `${formatted} ming so'm`;
 }
 
-function buildMainKeyboard(expenseId, suggestedCategory = null) {
+function buildMainKeyboard(expenseId, suggestedCategory = null, currentBranch = 'uchtepa') {
   const buttons = [];
 
   if (suggestedCategory) {
@@ -100,6 +97,15 @@ function buildMainKeyboard(expenseId, suggestedCategory = null) {
     ]);
   }
 
+  // Branch switcher button
+  const otherBranch = currentBranch === 'uchtepa' ? 'sergeli' : 'uchtepa';
+  const otherBranchName = currentBranch === 'uchtepa' ? '🏬 Sergeliga o‘tkazish' : '🏢 Uchtepaga o‘tkazish';
+  buttons.push([
+    Markup.button.callback(`📍 Filial: ${BRANCHES[currentBranch]?.name}`, 'noop'),
+    Markup.button.callback(otherBranchName, `swbranch_${expenseId}_${otherBranch}`)
+  ]);
+
+  // 4 Groups
   buttons.push([
     Markup.button.callback('👥 Xodimlar (19)', `grp_${expenseId}_xodimlar`),
     Markup.button.callback('🏢 Ofis & Xo‘jalik (11)', `grp_${expenseId}_ofis`)
@@ -139,22 +145,23 @@ function buildGroupKeyboard(expenseId, groupKey) {
 // /start command
 bot.start(async (ctx) => {
   const senderId = String(ctx.from?.id);
-  const isAdmin = ADMIN_IDS.includes(senderId);
+  const isAdmin = ALL_ADMIN_IDS.includes(senderId);
 
   let message = `Assalomu alaykum, <b>${ctx.from?.first_name || 'Foydalanuvchi'}</b>!\n\n`;
-  message += `Men <b>ZIN-NUR Xisobchi Boti</b>man.\n\n`;
+  message += `Men <b>ZIN-NUR Xisobchi Boti</b>man (Uchtepa va Sergeli filiallari uchun).\n\n`;
   message += `📝 <b>Qanday ishlatiladi:</b>\n`;
-  message += `Guruhda yoki shu yerda xarajatni yozing:\n`;
-  message += `<code>/hisob taksi 25 000</code>\n`;
-  message += `<code>/hisob #tushlik 35000 osh</code>\n`;
-  message += `<code>/hisob #arenda 41527000</code>\n\n`;
+  message += `• Uchtepa uchun: <code>/hisob uchtepa taksi 25 000</code>\n`;
+  message += `• Sergeli uchun: <code>/hisob sergeli taksi 25 000</code>\n`;
+  message += `• Teg bilan: <code>/hisob sergeli #tushlik 35000 osh</code>\n\n`;
 
   if (isAdmin) {
-    message += `👑 <b>Siz Administrator sifatida tizimga ulangansiz!</b> (ID: <code>${senderId}</code>)\n`;
-    message += `Barcha xarajatlarni tasdiqlash va bo'limlarga biriktirish xabarlari sizga yuboriladi.\n\n`;
-    message += `⚙️ Yangi oy ochish buyrug‘i: <code>/yangi_oy Noyabr</code>`;
+    let roles = [];
+    if (BRANCHES.uchtepa.adminIds.includes(senderId)) roles.push('🏢 Uchtepa');
+    if (BRANCHES.sergeli.adminIds.includes(senderId)) roles.push('🏬 Sergeli');
+    message += `👑 <b>Siz Administrator sifatida tizimga ulangansiz!</b>\nFiliallar: <b>${roles.join(', ')}</b> (ID: <code>${senderId}</code>)\n\n`;
+    message += `⚙️ Yangi oy ochish buyrug‘i:\n<code>/yangi_oy uchtepa Noyabr</code>\n<code>/yangi_oy sergeli Noyabr</code>`;
   } else {
-    message += `📩 Xarajatingiz administrator tasdiqlashi uchun yuboriladi va Google Jadvalga saqlanadi. (Sizning ID: <code>${senderId}</code>)`;
+    message += `📩 Xarajatingiz tegishli filial administratoriga yuboriladi. (ID: <code>${senderId}</code>)`;
   }
 
   await ctx.replyWithHTML(message);
@@ -171,30 +178,39 @@ bot.command(['tags', 'teglar', 'kategoriyalar'], async (ctx) => {
     text += `\n\n`;
   }
 
-  text += `💡 <i>Masalan: <code>/hisob #tushlik 20 000 somsa</code></i>`;
+  text += `💡 <i>Masalan: <code>/hisob sergeli #tushlik 20000 somsa</code></i>`;
   await ctx.replyWithHTML(text);
 });
 
-// /yangi_oy command for admin to create next month block on the left
+// /yangi_oy command
 bot.command(['yangi_oy', 'new_month', 'ochish'], async (ctx) => {
   const senderId = String(ctx.from?.id);
-  if (!ADMIN_IDS.includes(senderId)) {
+  if (!ALL_ADMIN_IDS.includes(senderId)) {
     return ctx.reply('⚠️ Bu buyruq faqat administratorlar uchun.');
   }
 
   const parts = ctx.message.text.trim().split(/\s+/);
-  let monthName = parts[1];
+  let branch = 'uchtepa';
+  let monthName = '';
+
+  if (parts[1] && (parts[1].toLowerCase() === 'sergeli' || parts[1].toLowerCase() === 'uchtepa')) {
+    branch = parts[1].toLowerCase();
+    monthName = parts[2] || '';
+  } else {
+    monthName = parts[1] || '';
+  }
+
   if (!monthName) {
     const nextMonthIdx = (new Date().getMonth() + 1) % 12;
     monthName = UZ_MONTHS[nextMonthIdx];
   }
 
-  await ctx.reply(`⏳ "${monthName}" oyi uchun chap tomonda yangi jadval ochilmoqda...`);
+  const branchConfig = BRANCHES[branch] || BRANCHES.uchtepa;
+  await ctx.reply(`⏳ "${branchConfig.name}" uchun "${monthName}" oyi yangi jadvali ochilmoqda...`);
 
   try {
-    const spreadsheetId = process.env.SPREADSHEET_ID || '1SrAtH5bLRXD3KrMw0km-F8T0CmpzaNO8Xy1n0sOiAYE';
-    await createNewMonthBlock(spreadsheetId, monthName, 'X N');
-    await ctx.reply(`✅ <b>Muvaffaqiyatli!</b>\nGoogle Sheets "X N" varag‘ida chap tomonda <b>${monthName}</b> oyi jadvali ochildi!`, { parse_mode: 'HTML' });
+    await createNewMonthBlock(branchConfig.spreadsheetId, monthName, branchConfig.sheetTitle);
+    await ctx.reply(`✅ <b>Muvaffaqiyatli!</b>\n${branchConfig.name} Google Jadvalida chap tomonda <b>${monthName}</b> oyi ochildi!`, { parse_mode: 'HTML' });
   } catch (err) {
     await ctx.reply(`❌ <b>Xatolik:</b> ${err.message}`, { parse_mode: 'HTML' });
   }
@@ -202,20 +218,22 @@ bot.command(['yangi_oy', 'new_month', 'ochish'], async (ctx) => {
 
 // Handle /hisob and /xarajat commands
 bot.hears(/^\/(?:hisob|xarajat)(?:@\w+)?(?:\s+.*)?$/is, async (ctx) => {
-  const parsed = parseExpenseCommand(ctx.message.text);
+  const chatTitle = ctx.chat.title || '';
+  const parsed = parseExpenseCommand(ctx.message.text, chatTitle);
 
   if (!parsed.success) {
     if (ctx.chat.type === 'private') {
-      await ctx.replyWithHTML(`⚠️ <b>Xatolik:</b> ${parsed.error}\n\nMisol: <code>/hisob taksi 20000</code>`);
+      await ctx.replyWithHTML(`⚠️ <b>Xatolik:</b> ${parsed.error}\n\nMisol: <code>/hisob uchtepa taksi 20000</code> yoki <code>/hisob sergeli taksi 20000</code>`);
     }
     return;
   }
 
-  const { title: expenseTitle, amount, rawAmount, category: suggestedCategory } = parsed;
+  const { title: expenseTitle, amount, rawAmount, branch, category: suggestedCategory } = parsed;
+  const branchConfig = BRANCHES[branch] || BRANCHES.uchtepa;
+
   const user = ctx.from;
   const userName = [user.first_name, user.last_name].filter(Boolean).join(' ') || 'Noma\'lum';
   const userHandle = user.username ? `@${user.username}` : userName;
-  const chatTitle = ctx.chat.title || 'Shaxsiy chat';
   const dateTime = formatDateTime();
 
   const expenseId = `${ctx.message.message_id}_${Date.now()}`;
@@ -223,7 +241,7 @@ bot.hears(/^\/(?:hisob|xarajat)(?:@\w+)?(?:\s+.*)?$/is, async (ctx) => {
   const expenseData = {
     expenseId,
     chatId: ctx.chat.id,
-    chatTitle,
+    chatTitle: chatTitle || 'Shaxsiy chat',
     messageId: ctx.message.message_id,
     userId: user.id,
     userHandle,
@@ -231,6 +249,7 @@ bot.hears(/^\/(?:hisob|xarajat)(?:@\w+)?(?:\s+.*)?$/is, async (ctx) => {
     expenseTitle,
     amount,
     rawAmount,
+    branch,
     date: dateTime.date,
     time: dateTime.time,
     adminMessages: {},
@@ -240,28 +259,27 @@ bot.hears(/^\/(?:hisob|xarajat)(?:@\w+)?(?:\s+.*)?$/is, async (ctx) => {
   pendingExpenses.set(expenseId, expenseData);
   savePendingExpenses(pendingExpenses);
 
-  // In group, give instant polite confirmation
   if (ctx.chat.type !== 'private') {
     try {
-      await ctx.reply(`📩 <i>Xarajat arizasi qabul qilindi va adminga yuborildi.</i>`, {
+      await ctx.reply(`📩 <i>Xarajat arizasi (${branchConfig.name}) qabul qilindi va adminga yuborildi.</i>`, {
         parse_mode: 'HTML',
         reply_to_message_id: ctx.message.message_id
       });
     } catch (e) {}
   }
 
-  let adminMessage = `🔔 <b>Yangi xarajat arizasi!</b>\n\n`;
+  let adminMessage = `🔔 <b>Yangi xarajat arizasi (${branchConfig.name})!</b>\n\n`;
+  adminMessage += `📍 <b>Filial:</b> <b>${branchConfig.name}</b>\n`;
   adminMessage += `👤 <b>Yuboruvchi:</b> ${userName} (${userHandle})\n`;
-  adminMessage += `📍 <b>Manba:</b> ${chatTitle}\n`;
   adminMessage += `📝 <b>Nomi:</b> <code>${expenseTitle}</code>\n`;
   adminMessage += `💵 <b>Summa:</b> <b>${formatAmountDisplay(amount)}</b>\n`;
   adminMessage += `📅 <b>Sana va vaqt:</b> ${dateTime.date} ${dateTime.time}\n\n`;
   adminMessage += `👇 <b>Xarajat qaysi bo‘limga tegishli?</b>`;
 
-  const keyboard = buildMainKeyboard(expenseId, suggestedCategory);
+  const keyboard = buildMainKeyboard(expenseId, suggestedCategory, branch);
 
-  // Send to all registered admins
-  for (const adminId of ADMIN_IDS) {
+  // Send to this branch's admins
+  for (const adminId of branchConfig.adminIds) {
     try {
       const sentMsg = await bot.telegram.sendMessage(adminId, adminMessage, {
         parse_mode: 'HTML',
@@ -275,10 +293,44 @@ bot.hears(/^\/(?:hisob|xarajat)(?:@\w+)?(?:\s+.*)?$/is, async (ctx) => {
 
   pendingExpenses.set(expenseId, expenseData);
   savePendingExpenses(pendingExpenses);
-  console.log(`[EXPENSE QUEUED] ID: ${expenseId} -> "${expenseTitle}" (${amount}) from ${userName}`);
+  console.log(`[EXPENSE QUEUED] [${branchConfig.name}] ID: ${expenseId} -> "${expenseTitle}" (${amount}) from ${userName}`);
 });
 
-// Group selection callback (grp_<expenseId>_<groupKey>)
+// Switch branch callback (swbranch_<expenseId>_<newBranch>)
+bot.action(/^swbranch_([^_]+_\d+)_(.+)$/, async (ctx) => {
+  const expenseId = ctx.match[1];
+  const newBranch = ctx.match[2];
+  const expenseData = pendingExpenses.get(expenseId);
+
+  if (!expenseData) {
+    await ctx.answerCbQuery('⚠️ Bu ariza eskirgan.');
+    return;
+  }
+
+  expenseData.branch = newBranch;
+  pendingExpenses.set(expenseId, expenseData);
+  savePendingExpenses(pendingExpenses);
+
+  const branchConfig = BRANCHES[newBranch] || BRANCHES.uchtepa;
+  const keyboard = buildMainKeyboard(expenseId, null, newBranch);
+
+  let text = `🔔 <b>Xarajat arizasi (${branchConfig.name}):</b>\n\n`;
+  text += `📍 <b>Filial:</b> <b>${branchConfig.name}</b>\n`;
+  text += `👤 <b>Yuboruvchi:</b> ${expenseData.userName} (${expenseData.userHandle})\n`;
+  text += `📝 <b>Nomi:</b> <code>${expenseData.expenseTitle}</code>\n`;
+  text += `💵 <b>Summa:</b> <b>${formatAmountDisplay(expenseData.amount)}</b>\n`;
+  text += `📅 <b>Sana:</b> ${expenseData.date} ${expenseData.time}\n\n`;
+  text += `👇 Kerakli bo‘limni tanlang:`;
+
+  try {
+    await ctx.editMessageText(text, { parse_mode: 'HTML', ...keyboard });
+    await ctx.answerCbQuery(`Filial o'zgartirildi: ${branchConfig.name}`);
+  } catch (e) {
+    await ctx.answerCbQuery();
+  }
+});
+
+// Group selection callback
 bot.action(/^grp_([^_]+_\d+)_(.+)$/, async (ctx) => {
   const expenseId = ctx.match[1];
   const groupKey = ctx.match[2];
@@ -291,10 +343,11 @@ bot.action(/^grp_([^_]+_\d+)_(.+)$/, async (ctx) => {
 
   const groupInfo = GROUPS.find(g => g.key === groupKey);
   const groupLabel = groupInfo ? groupInfo.label : groupKey;
+  const branchConfig = BRANCHES[expenseData.branch] || BRANCHES.uchtepa;
 
   const keyboard = buildGroupKeyboard(expenseId, groupKey);
 
-  let text = `📂 <b>${groupLabel}</b> bo‘limi:\n\n`;
+  let text = `📂 <b>${groupLabel}</b> (${branchConfig.name}):\n\n`;
   text += `📝 <b>Nomi:</b> <code>${expenseData.expenseTitle}</code>\n`;
   text += `💵 <b>Summa:</b> <b>${formatAmountDisplay(expenseData.amount)}</b>\n`;
   text += `👤 <b>Yuboruvchi:</b> ${expenseData.userName}\n\n`;
@@ -321,9 +374,11 @@ bot.action(/^back_([^_]+_\d+)$/, async (ctx) => {
     return;
   }
 
-  const keyboard = buildMainKeyboard(expenseId);
+  const branchConfig = BRANCHES[expenseData.branch] || BRANCHES.uchtepa;
+  const keyboard = buildMainKeyboard(expenseId, null, expenseData.branch);
 
-  let text = `🔔 <b>Xarajatni bo‘limga biriktirish:</b>\n\n`;
+  let text = `🔔 <b>Xarajat arizasi (${branchConfig.name}):</b>\n\n`;
+  text += `📍 <b>Filial:</b> <b>${branchConfig.name}</b>\n`;
   text += `👤 <b>Yuboruvchi:</b> ${expenseData.userName} (${expenseData.userHandle})\n`;
   text += `📝 <b>Nomi:</b> <code>${expenseData.expenseTitle}</code>\n`;
   text += `💵 <b>Summa:</b> <b>${formatAmountDisplay(expenseData.amount)}</b>\n`;
@@ -339,6 +394,11 @@ bot.action(/^back_([^_]+_\d+)$/, async (ctx) => {
   } catch (e) {
     await ctx.answerCbQuery();
   }
+});
+
+// Noop callback
+bot.action('noop', async (ctx) => {
+  await ctx.answerCbQuery();
 });
 
 // Category selection callback
@@ -367,6 +427,7 @@ bot.action(/^cat_([^_]+_\d+)_(.+)$/, async (ctx) => {
     const result = await appendExpenseByCategory(categoryKey, {
       expenseTitle: expenseData.expenseTitle,
       amount: expenseData.amount,
+      branch: expenseData.branch || 'uchtepa',
       date: new Date()
     });
 
@@ -376,6 +437,7 @@ bot.action(/^cat_([^_]+_\d+)_(.+)$/, async (ctx) => {
     const adminWhosaved = ctx.from?.first_name || 'Admin';
 
     let successText = `✅ <b>Google Jadvalga muvaffaqiyatli saqlandi!</b>\n\n`;
+    successText += `📍 <b>Filial:</b> <b>${result.branch}</b>\n`;
     successText += `📊 <b>Kategoriya:</b> <code>${result.category}</code>\n`;
     successText += `📝 <b>Nomi:</b> ${expenseData.expenseTitle}\n`;
     successText += `💵 <b>Yozilgan summa:</b> ${result.addedAmount} ming (${formatAmountDisplay(expenseData.amount)})\n`;
@@ -396,7 +458,7 @@ bot.action(/^cat_([^_]+_\d+)_(.+)$/, async (ctx) => {
       }
     }
 
-    console.log(`[SAVED TO SHEETS] ${result.category} | Row: ${result.row} | Amount: ${result.addedAmount}`);
+    console.log(`[SAVED TO SHEETS] [${result.branch}] ${result.category} | Row: ${result.row} | Amount: ${result.addedAmount}`);
   } catch (err) {
     console.error('[SHEETS ERROR]', err.message);
     await ctx.reply(`❌ <b>Xatolik yuz berdi:</b> ${err.message}`, { parse_mode: 'HTML' });
@@ -416,6 +478,8 @@ bot.action(/^cancel_([^_]+_\d+)$/, async (ctx) => {
   const adminWhocancelled = ctx.from?.first_name || 'Admin';
   let cancelText = `❌ <b>Xarajat arizasi bekor qilindi (${adminWhocancelled} tomonidan).</b>\n\n`;
   if (expenseData) {
+    const branchConfig = BRANCHES[expenseData.branch] || BRANCHES.uchtepa;
+    cancelText += `📍 <b>Filial:</b> ${branchConfig.name}\n`;
     cancelText += `📝 <b>Nomi:</b> ${expenseData.expenseTitle}\n`;
     cancelText += `💵 <b>Summa:</b> ${formatAmountDisplay(expenseData.amount)}\n`;
     cancelText += `👤 <b>Yuboruvchi:</b> ${expenseData.userName}`;
@@ -431,11 +495,10 @@ bot.action(/^cancel_([^_]+_\d+)$/, async (ctx) => {
 
 // Start bot polling
 bot.launch().then(() => {
-  console.log(`🚀 Zinnur Hisobchi Bot muvaffaqiyatli ishga tushdi! Adminlar: ${ADMIN_IDS.join(', ')}`);
+  console.log(`🚀 Zinnur Hisobchi Bot (Uchtepa + Sergeli) muvaffaqiyatli ishga tushdi!`);
 }).catch((err) => {
   console.error('[BOT LAUNCH ERROR]', err.message);
 });
 
-// Graceful shutdown
 process.once('SIGINT', () => bot.stop('SIGINT'));
 process.once('SIGTERM', () => bot.stop('SIGTERM'));
