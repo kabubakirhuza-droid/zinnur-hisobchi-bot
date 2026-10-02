@@ -63,24 +63,33 @@ export function parseExpenseCommand(rawText, chatTitle = '') {
   }
 
   const trimmed = rawText.trim();
-  const hisobRegex = /^\/(?:hisob|xarajat)(?:@\w+)?(?:\s+(.*))?$/is;
+  const hisobRegex = /^\/(?:hisob|xarajat)(?:_(uchtepa|sergeli))?(?:@\w+)?(?:\s+(.*))?$/is;
   const match = trimmed.match(hisobRegex);
 
   if (!match) {
     return { success: false, error: 'Сообщение не начинается с команды /hisob' };
   }
 
-  let payload = match[1] ? match[1].trim() : '';
+  const cmdBranch = match[1] ? match[1].toLowerCase() : null;
+  let payload = match[2] ? match[2].trim() : '';
   if (!payload) {
     return {
       success: false,
-      error: 'Не указаны данные расхода. Пример: /hisob uchtepa taksi 20000 или /hisob sergeli taksi 20000'
+      error: 'Не указаны данные расхода. Пример: /hisob_uchtepa taksi 20000 или /hisob_sergeli taksi 20000'
     };
   }
 
   // 1. Extract branch
-  const { cleaned: afterBranchText, branch } = extractBranch(payload, chatTitle);
-  payload = afterBranchText;
+  let branch = cmdBranch;
+  if (!branch) {
+    const extracted = extractBranch(payload, chatTitle);
+    payload = extracted.cleaned;
+    branch = extracted.branch;
+  } else {
+    // Clean branch keywords from payload if any
+    const extracted = extractBranch(payload, chatTitle);
+    payload = extracted.cleaned;
+  }
 
   // 2. Extract hashtag category
   const { cleanedText, matchedCategory } = extractHashtagCategory(payload);

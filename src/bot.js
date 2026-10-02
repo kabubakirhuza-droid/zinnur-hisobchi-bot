@@ -216,8 +216,8 @@ bot.command(['yangi_oy', 'new_month', 'ochish'], async (ctx) => {
   }
 });
 
-// Handle /hisob and /xarajat commands
-bot.hears(/^\/(?:hisob|xarajat)(?:@\w+)?(?:\s+.*)?$/is, async (ctx) => {
+// Handle /hisob, /hisob_uchtepa, /hisob_sergeli, /xarajat commands
+bot.hears(/^\/(?:hisob|xarajat)(?:_(?:uchtepa|sergeli))?(?:@\w+)?(?:\s+.*)?$/is, async (ctx) => {
   const chatTitle = ctx.chat.title || '';
   const parsed = parseExpenseCommand(ctx.message.text, chatTitle);
 
@@ -494,8 +494,22 @@ bot.action(/^cancel_([^_]+_\d+)$/, async (ctx) => {
 });
 
 // Start bot polling
-bot.launch().then(() => {
+bot.launch().then(async () => {
   console.log(`🚀 Zinnur Hisobchi Bot (Uchtepa + Sergeli) muvaffaqiyatli ishga tushdi!`);
+  try {
+    const commands = [
+      { command: 'hisob_uchtepa', description: '🏢 Uchtepa: /hisob_uchtepa taksi 25000' },
+      { command: 'hisob_sergeli', description: '🏬 Sergeli: /hisob_sergeli taksi 25000' },
+      { command: 'hisob', description: '📝 Xarajat: /hisob filial nomi summa' },
+      { command: 'tags', description: '📋 43 ta teglar va bo‘limlar ro‘yxati' },
+      { command: 'yangi_oy', description: '📅 Yangi oy ochish (Admin uchun)' }
+    ];
+    await bot.telegram.setMyCommands(commands);
+    await bot.telegram.setMyCommands(commands, { scope: { type: 'all_group_chats' } });
+    await bot.telegram.setMyCommands(commands, { scope: { type: 'all_chat_administrators' } });
+  } catch (e) {
+    console.warn('Command menu setup warning:', e.message);
+  }
 }).catch((err) => {
   console.error('[BOT LAUNCH ERROR]', err.message);
 });
