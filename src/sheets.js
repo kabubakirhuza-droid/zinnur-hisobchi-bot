@@ -11,7 +11,7 @@ export const BRANCHES = {
   uchtepa: {
     key: 'uchtepa',
     name: '🏢 Uchtepa',
-    spreadsheetId: '1pOyuFZkQ4AbjELBK0753uUkgGVJ_UNfMBEGqpK9M6hc',
+    spreadsheetId: '1SrAtH5bLRXD3KrMw0km-F8T0CmpzaNO8Xy1n0sOiAYE',
     sheetTitle: 'X N',
     adminIds: ['716752890']
   },
