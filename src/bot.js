@@ -216,40 +216,38 @@ bot.command(['yangi_oy', 'new_month', 'ochish'], async (ctx) => {
   }
 });
 
-// Handle /hisob, /hisob_uchtepa, /hisob_sergeli, /xarajat commands
-bot.hears(/^\/(?:hisob|xarajat)(?:_(?:uchtepa|sergeli))?(?:@\w+)?(?:\s+.*)?$/is, async (ctx) => {
-  const chatTitle = ctx.chat.title || '';
-  const parsed = parseExpenseCommand(ctx.message.text, chatTitle);
+// In-memory active prompt tracking
+const activePrompts = new Map();
+const userLastPrompt = new Map();
 
-  if (!parsed.success) {
-    if (ctx.chat.type === 'private') {
-      await ctx.replyWithHTML(`⚠️ <b>Xatolik:</b> ${parsed.error}\n\nMisol: <code>/hisob uchtepa taksi 20000</code> yoki <code>/hisob sergeli taksi 20000</code>`);
-    }
-    return;
+async function handleExpenseSubmission({ ctx, rawText, branch, user, chatTitle, replyToMessageId }) {
+  const details = parseExpenseDetails(rawText, branch, chatTitle);
+
+  if (!details.success) {
+    return { success: false, error: details.error };
   }
 
-  const { title: expenseTitle, amount, rawAmount, branch, category: suggestedCategory } = parsed;
-  const branchConfig = BRANCHES[branch] || BRANCHES.uchtepa;
+  const { title: expenseTitle, amount, rawAmount, branch: finalBranch, category: suggestedCategory } = details;
+  const branchConfig = BRANCHES[finalBranch] || BRANCHES.uchtepa;
 
-  const user = ctx.from;
   const userName = [user.first_name, user.last_name].filter(Boolean).join(' ') || 'Noma\'lum';
   const userHandle = user.username ? `@${user.username}` : userName;
   const dateTime = formatDateTime();
 
-  const expenseId = `${ctx.message.message_id}_${Date.now()}`;
+  const expenseId = `${replyToMessageId || ctx.message?.message_id || Date.now()}_${Date.now()}`;
 
   const expenseData = {
     expenseId,
     chatId: ctx.chat.id,
     chatTitle: chatTitle || 'Shaxsiy chat',
-    messageId: ctx.message.message_id,
+    messageId: replyToMessageId || ctx.message?.message_id,
     userId: user.id,
     userHandle,
     userName,
     expenseTitle,
     amount,
     rawAmount,
-    branch,
+    branch: finalBranch,
     date: dateTime.date,
     time: dateTime.time,
     adminMessages: {},
@@ -261,9 +259,15 @@ bot.hears(/^\/(?:hisob|xarajat)(?:_(?:uchtepa|sergeli))?(?:@\w+)?(?:\s+.*)?$/is,
 
   if (ctx.chat.type !== 'private') {
     try {
-      await ctx.reply(`📩 <i>Xarajat arizasi (${branchConfig.name}) qabul qilindi va adminga yuborildi.</i>`, {
+      await ctx.reply(`✅ <i>[${branchConfig.name}] Xarajat arizasi qabul qilindi ("${expenseTitle}" — ${formatAmountDisplay(amount)}) va adminga yuborildi.</i>`, {
         parse_mode: 'HTML',
-        reply_to_message_id: ctx.message.message_id
+        reply_to_message_id: replyToMessageId || ctx.message?.message_id
+      });
+    } catch (e) {}
+  } else {
+    try {
+      await ctx.reply(`✅ <i>[${branchConfig.name}] Xarajat arizasi qabul qilindi ("${expenseTitle}" — ${formatAmountDisplay(amount)}) va adminga yuborildi.</i>`, {
+        parse_mode: 'HTML'
       });
     } catch (e) {}
   }
@@ -276,9 +280,8 @@ bot.hears(/^\/(?:hisob|xarajat)(?:_(?:uchtepa|sergeli))?(?:@\w+)?(?:\s+.*)?$/is,
   adminMessage += `📅 <b>Sana va vaqt:</b> ${dateTime.date} ${dateTime.time}\n\n`;
   adminMessage += `👇 <b>Xarajat qaysi bo‘limga tegishli?</b>`;
 
-  const keyboard = buildMainKeyboard(expenseId, suggestedCategory, branch);
+  const keyboard = buildMainKeyboard(expenseId, suggestedCategory, finalBranch);
 
-  // Send to this branch's admins
   for (const adminId of branchConfig.adminIds) {
     try {
       const sentMsg = await bot.telegram.sendMessage(adminId, adminMessage, {
@@ -287,17 +290,138 @@ bot.hears(/^\/(?:hisob|xarajat)(?:_(?:uchtepa|sergeli))?(?:@\w+)?(?:\s+.*)?$/is,
       });
       expenseData.adminMessages[adminId] = sentMsg.message_id;
     } catch (err) {
-      console.warn(`[ADMIN NOTIFY WARNING] ID: ${adminId} ga yuborilmadi (${err.message}). Ehtimol botga /start bosmagan.`);
+      console.warn(`[ADMIN NOTIFY WARNING] ID: ${adminId} ga yuborilmadi (${err.message}).`);
     }
   }
 
   pendingExpenses.set(expenseId, expenseData);
   savePendingExpenses(pendingExpenses);
   console.log(`[EXPENSE QUEUED] [${branchConfig.name}] ID: ${expenseId} -> "${expenseTitle}" (${amount}) from ${userName}`);
+
+  return { success: true, expenseId, expenseData };
+}
+
+// Handle /hisob, /hisob_uchtepa, /hisob_sergeli, /xarajat commands
+bot.hears(/^\/(?:hisob|xarajat)(?:_(?:uchtepa|sergeli))?(?:@\w+)?(?:\s+.*)?$/is, async (ctx) => {
+  const chatTitle = ctx.chat.title || '';
+  const parsed = parseExpenseCommand(ctx.message.text, chatTitle);
+
+  // If user clicked the command without arguments (e.g. from Telegram command menu)
+  if (parsed.isEmptyPrompt) {
+    const targetBranch = parsed.cmdBranch || (chatTitle.toLowerCase().includes('sergeli') ? 'sergeli' : 'uchtepa');
+    const branchConfig = BRANCHES[targetBranch] || BRANCHES.uchtepa;
+
+    try {
+      const promptMsg = await ctx.reply(
+        `✍️ <b>[${branchConfig.name}]</b> Iltimos, xarajat nomi va summasini yozing:\n<i>(Masalan: <code>taksi 25000</code> yoki <code>obed 35000 #tushlik</code>)</i>`,
+        {
+          parse_mode: 'HTML',
+          reply_to_message_id: ctx.message.message_id,
+          reply_markup: {
+            force_reply: true,
+            selective: true
+          }
+        }
+      );
+
+      const promptData = {
+        userId: ctx.from.id,
+        userName: [ctx.from.first_name, ctx.from.last_name].filter(Boolean).join(' ') || 'Noma\'lum',
+        branch: targetBranch,
+        chatId: ctx.chat.id,
+        chatTitle,
+        promptMessageId: promptMsg.message_id,
+        originalMessageId: ctx.message.message_id,
+        expiresAt: Date.now() + 10 * 60 * 1000
+      };
+
+      activePrompts.set(promptMsg.message_id, promptData);
+      userLastPrompt.set(`${ctx.chat.id}_${ctx.from.id}`, promptData);
+    } catch (e) {
+      console.error('[PROMPT ERROR]', e.message);
+    }
+    return;
+  }
+
+  if (!parsed.success) {
+    if (ctx.chat.type === 'private') {
+      await ctx.replyWithHTML(`⚠️ <b>Xatolik:</b> ${parsed.error}\n\nMisol: <code>/hisob uchtepa taksi 20000</code> yoki <code>/hisob sergeli taksi 20000</code>`);
+    }
+    return;
+  }
+
+  await handleExpenseSubmission({
+    ctx,
+    rawText: `${parsed.title} ${parsed.rawAmount}`,
+    branch: parsed.branch,
+    user: ctx.from,
+    chatTitle,
+    replyToMessageId: ctx.message.message_id
+  });
 });
 
-// Switch branch callback (swbranch_<expenseId>_<newBranch>)
-bot.action(/^swbranch_([^_]+_\d+)_(.+)$/, async (ctx) => {
+// Handle plain text responses to prompts
+bot.on('text', async (ctx, next) => {
+  const text = ctx.message.text.trim();
+  if (text.startsWith('/')) return next();
+
+  const userKey = `${ctx.chat.id}_${ctx.from.id}`;
+  const replyToId = ctx.message.reply_to_message?.message_id;
+
+  let promptContext = null;
+  if (replyToId && activePrompts.has(replyToId)) {
+    promptContext = activePrompts.get(replyToId);
+  } else if (userLastPrompt.has(userKey)) {
+    const last = userLastPrompt.get(userKey);
+    if (Date.now() < last.expiresAt) {
+      promptContext = last;
+    } else {
+      userLastPrompt.delete(userKey);
+    }
+  }
+
+  // If this message is a response to an active prompt or in private chat
+  if (promptContext) {
+    const result = await handleExpenseSubmission({
+      ctx,
+      rawText: text,
+      branch: promptContext.branch || 'uchtepa',
+      user: ctx.from,
+      chatTitle: ctx.chat.title || promptContext.chatTitle || '',
+      replyToMessageId: ctx.message.message_id
+    });
+
+    if (result.success) {
+      if (promptContext.promptMessageId) activePrompts.delete(promptContext.promptMessageId);
+      userLastPrompt.delete(userKey);
+      return;
+    } else if (replyToId && activePrompts.has(replyToId)) {
+      await ctx.reply(`⚠️ Summani aniqlab bo‘lmadi. Iltimos, xarajat <b>nomi va summasini</b> yozing (masalan: <code>taksi 25000</code>)`, {
+        parse_mode: 'HTML',
+        reply_to_message_id: ctx.message.message_id
+      });
+      return;
+    }
+  }
+
+  // If in private chat, try parsing expense details directly
+  if (ctx.chat.type === 'private') {
+    const parsed = parseExpenseDetails(text, 'uchtepa');
+    if (parsed.success) {
+      await handleExpenseSubmission({
+        ctx,
+        rawText: text,
+        branch: parsed.branch || 'uchtepa',
+        user: ctx.from,
+        chatTitle: 'Shaxsiy chat',
+        replyToMessageId: ctx.message.message_id
+      });
+      return;
+    }
+  }
+
+  return next();
+});
   const expenseId = ctx.match[1];
   const newBranch = ctx.match[2];
   const expenseData = pendingExpenses.get(expenseId);

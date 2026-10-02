@@ -11,7 +11,6 @@ function extractBranch(text, chatTitle = '') {
   let cleaned = text;
   let branch = null;
 
-  // Check in text for explicit branch mentions
   if (/\b(?:sergeli|сергели|sergili|#sergeli)\b/i.test(cleaned)) {
     branch = 'sergeli';
     cleaned = cleaned.replace(/\b(?:sergeli|сергели|sergili|#sergeli)\b/gi, '').trim();
@@ -23,7 +22,7 @@ function extractBranch(text, chatTitle = '') {
   } else if (/uchtepa|учтепа/i.test(chatTitle)) {
     branch = 'uchtepa';
   } else {
-    branch = 'uchtepa'; // Default branch
+    branch = 'uchtepa';
   }
 
   return { cleaned, branch };
@@ -49,46 +48,21 @@ function extractHashtagCategory(text) {
 }
 
 /**
- * Parses a telegram message text for /hisob command with branch detection.
- *
- * Formats:
- * - /hisob uchtepa taksi 25000
- * - /hisob sergeli taksi 25000
- * - /hisob taksi 25000 (auto-detects from group or defaults to uchtepa)
- * - /hisob #sergeli #tushlik 35000 osh
+ * Parses pure expense details like "taksi 25000" or "obed 35000 #tushlik"
  */
-export function parseExpenseCommand(rawText, chatTitle = '') {
-  if (!rawText || typeof rawText !== 'string') {
-    return { success: false, error: 'Текст сообщения пуст' };
+export function parseExpenseDetails(payloadText, defaultBranch = 'uchtepa', chatTitle = '') {
+  if (!payloadText || typeof payloadText !== 'string') {
+    return { success: false, error: 'Xarajat matni bo‘sh' };
   }
 
-  const trimmed = rawText.trim();
-  const hisobRegex = /^\/(?:hisob|xarajat)(?:_(uchtepa|sergeli))?(?:@\w+)?(?:\s+(.*))?$/is;
-  const match = trimmed.match(hisobRegex);
+  let payload = payloadText.trim();
 
-  if (!match) {
-    return { success: false, error: 'Сообщение не начинается с команды /hisob' };
-  }
-
-  const cmdBranch = match[1] ? match[1].toLowerCase() : null;
-  let payload = match[2] ? match[2].trim() : '';
-  if (!payload) {
-    return {
-      success: false,
-      error: 'Не указаны данные расхода. Пример: /hisob_uchtepa taksi 20000 или /hisob_sergeli taksi 20000'
-    };
-  }
-
-  // 1. Extract branch
-  let branch = cmdBranch;
-  if (!branch) {
-    const extracted = extractBranch(payload, chatTitle);
-    payload = extracted.cleaned;
-    branch = extracted.branch;
-  } else {
-    // Clean branch keywords from payload if any
-    const extracted = extractBranch(payload, chatTitle);
-    payload = extracted.cleaned;
+  // 1. Extract branch if present
+  let branch = defaultBranch;
+  const extractedBranch = extractBranch(payload, chatTitle);
+  if (extractedBranch.branch && extractedBranch.cleaned !== payload) {
+    branch = extractedBranch.branch;
+    payload = extractedBranch.cleaned;
   }
 
   // 2. Extract hashtag category
@@ -143,6 +117,37 @@ export function parseExpenseCommand(rawText, chatTitle = '') {
 
   return {
     success: false,
-    error: 'Не удалось определить название расхода и сумму. Пример: /hisob uchtepa taksi 20000'
+    error: 'Nomi va summasini aniqlab bo‘lmadi. Misol: "taksi 25000"'
   };
+}
+
+/**
+ * Parses full telegram message text for /hisob commands.
+ */
+export function parseExpenseCommand(rawText, chatTitle = '') {
+  if (!rawText || typeof rawText !== 'string') {
+    return { success: false, error: 'Текст сообщения пуст' };
+  }
+
+  const trimmed = rawText.trim();
+  const hisobRegex = /^\/(?:hisob|xarajat)(?:_(uchtepa|sergeli))?(?:@\w+)?(?:\s+(.*))?$/is;
+  const match = trimmed.match(hisobRegex);
+
+  if (!match) {
+    return { success: false, error: 'Сообщение не начинается с команды /hisob' };
+  }
+
+  const cmdBranch = match[1] ? match[1].toLowerCase() : null;
+  const payload = match[2] ? match[2].trim() : '';
+
+  if (!payload) {
+    return {
+      success: false,
+      isEmptyPrompt: true,
+      cmdBranch: cmdBranch || (chatTitle.toLowerCase().includes('sergeli') ? 'sergeli' : 'uchtepa'),
+      error: 'Iltimos, xarajat nomi va summasini yozing (masalan: taksi 25000)'
+    };
+  }
+
+  return parseExpenseDetails(payload, cmdBranch || 'uchtepa', chatTitle);
 }
