@@ -3,7 +3,7 @@ import http from 'http';
 import { Telegraf, Markup } from 'telegraf';
 import fs from 'fs';
 import path from 'path';
-import { parseExpenseCommand } from './parser.js';
+import { parseExpenseCommand, parseExpenseDetails } from './parser.js';
 import { appendExpenseByCategory, createNewMonthBlock, CATEGORIES, GROUPS, BRANCHES, UZ_MONTHS } from './sheets.js';
 
 const PORT = process.env.PORT || 3000;
