@@ -422,6 +422,9 @@ bot.on('text', async (ctx, next) => {
 
   return next();
 });
+
+// Switch branch callback (swbranch_<expenseId>_<newBranch>)
+bot.action(/^swbranch_([^_]+_\d+)_(.+)$/, async (ctx) => {
   const expenseId = ctx.match[1];
   const newBranch = ctx.match[2];
   const expenseData = pendingExpenses.get(expenseId);
