@@ -595,13 +595,11 @@ bot.action(/^cat_([^_]+_\d+)_(.+)$/, async (ctx) => {
 
     // Notify group / original chat that the request was approved and saved
     if (expenseData.chatId) {
-      let groupNotification = `✅ <b>Arizangiz tasdiqlandi va jadvalga kiritildi!</b>\n\n`;
+      let groupNotification = `✅ <b>Tasdiqlandi</b>\n\n`;
       groupNotification += `📍 <b>Filial:</b> ${result.branch}\n`;
       groupNotification += `📝 <b>Nomi:</b> <code>${expenseData.expenseTitle}</code>\n`;
       groupNotification += `💵 <b>Summa:</b> <b>${formatAmountDisplay(expenseData.amount)}</b>\n`;
-      groupNotification += `📊 <b>Bo‘lim:</b> <code>${result.category}</code>\n`;
-      groupNotification += `👤 <b>Xodim:</b> ${expenseData.userName}\n`;
-      groupNotification += `👑 <b>Tasdiqladi:</b> ${adminWhosaved}`;
+      groupNotification += `📊 <b>Bo‘lim:</b> <code>${result.category}</code>`;
 
       try {
         await bot.telegram.sendMessage(expenseData.chatId, groupNotification, {
@@ -645,12 +643,10 @@ bot.action(/^cancel_([^_]+_\d+)$/, async (ctx) => {
 
     // Notify group / original chat that the request was rejected
     if (expenseData.chatId) {
-      let groupCancel = `❌ <b>Xarajat arizasi rad etildi / bekor qilindi.</b>\n\n`;
+      let groupCancel = `❌ <b>Tasdiqlanmadi</b>\n\n`;
       groupCancel += `📍 <b>Filial:</b> ${branchConfig.name}\n`;
       groupCancel += `📝 <b>Nomi:</b> <code>${expenseData.expenseTitle}</code>\n`;
-      groupCancel += `💵 <b>Summa:</b> ${formatAmountDisplay(expenseData.amount)}\n`;
-      groupCancel += `👤 <b>Xodim:</b> ${expenseData.userName}\n`;
-      groupCancel += `👑 <b>Bekor qildi:</b> ${adminWhocancelled}`;
+      groupCancel += `💵 <b>Summa:</b> <b>${formatAmountDisplay(expenseData.amount)}</b>`;
 
       try {
         await bot.telegram.sendMessage(expenseData.chatId, groupCancel, {
