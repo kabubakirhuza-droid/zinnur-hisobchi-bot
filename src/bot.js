@@ -19,6 +19,14 @@ const botToken = process.env.BOT_TOKEN || '8760033475:AAGd1me4GB-F9u2ZZmeBilrQKu
 const bot = new Telegraf(botToken);
 const timeZone = process.env.TIMEZONE || 'Asia/Tashkent';
 
+bot.use(async (ctx, next) => {
+  const sender = ctx.from ? `${ctx.from.first_name} (ID: ${ctx.from.id})` : 'Unknown';
+  const chatInfo = ctx.chat ? `[Chat: ${ctx.chat.title || ctx.chat.type} (${ctx.chat.id})]` : '';
+  const textInfo = ctx.message?.text || ctx.callbackQuery?.data || '(media/other)';
+  console.log(`📩 [UPDATE] ${chatInfo} ${sender}: "${textInfo}"`);
+  return next();
+});
+
 const ALL_ADMIN_IDS = Array.from(new Set([
   ...BRANCHES.uchtepa.adminIds,
   ...BRANCHES.sergeli.adminIds
@@ -621,8 +629,7 @@ bot.action(/^cancel_([^_]+_\d+)$/, async (ctx) => {
 });
 
 // Start bot polling
-bot.launch().then(async () => {
-  console.log(`🚀 Zinnur Hisobchi Bot (Uchtepa + Sergeli) muvaffaqiyatli ishga tushdi!`);
+(async () => {
   try {
     const commands = [
       { command: 'hisob_uchtepa', description: '🏢 Uchtepa: /hisob_uchtepa taksi 25000' },
@@ -634,12 +641,15 @@ bot.launch().then(async () => {
     await bot.telegram.setMyCommands(commands);
     await bot.telegram.setMyCommands(commands, { scope: { type: 'all_group_chats' } });
     await bot.telegram.setMyCommands(commands, { scope: { type: 'all_chat_administrators' } });
+    console.log(`🚀 Zinnur Hisobchi Bot (Uchtepa + Sergeli) muvaffaqiyatli ishga tushdi!`);
   } catch (e) {
     console.warn('Command menu setup warning:', e.message);
   }
-}).catch((err) => {
-  console.error('[BOT LAUNCH ERROR]', err.message);
-});
+
+  bot.launch().catch((err) => {
+    console.error('[BOT LAUNCH ERROR]', err.message);
+  });
+})();
 
 process.once('SIGINT', () => bot.stop('SIGINT'));
 process.once('SIGTERM', () => bot.stop('SIGTERM'));
