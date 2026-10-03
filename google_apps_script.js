@@ -1,12 +1,13 @@
 // =================================================================
-// 🌟 ZIN-NUR XISOBCHI BOT — GOOGLE APPS SCRIPT (BUTUNLAY SERVERSIZ 24/7)
+// 🌟 ZIN-NUR XISOBCHI BOT — GOOGLE APPS SCRIPT (100% SERVERSIZ 24/7)
 // =================================================================
-// Ushbu skript Google Sheets ichida ishlaydi. Hech qanday kompyuter yoki
-// tashqi server kerak emas! 100% Google serverlarida 24/7/365 bepul ishlaydi.
+// Ushbu skript Google Sheets ichida ishlaydi.
+// Hech qanday Render, Node.js yoki to'lovli server kerak emas!
+// 100% Google serverlarida 24/7/365 bepul ishlaydi.
 // =================================================================
 
 const BOT_TOKEN = "8760033475:AAGd1me4GB-F9u2ZZmeBilrQKuOtWU8QYRg";
-const ADMIN_ID = "716752890"; // Yagona bosh administrator
+const ADMIN_ID = "716752890"; // Yagona administrator (Ismoil)
 
 // Filiallar va jadvallar
 const BRANCHES = {
@@ -25,7 +26,7 @@ const BRANCHES = {
 };
 
 const CATEGORIES = [
-  // Xodimlar
+  // Xodimlar (19 ta)
   { key: "ustozlar_av", label: "Ustozlar av.", group: "xodimlar", groupName: "👥 Xodimlar" },
   { key: "ustozlar_bonus", label: "Ustozlar bonus", group: "xodimlar", groupName: "👥 Xodimlar" },
   { key: "oquv_bolimi", label: "O'quv bo'limi", group: "xodimlar", groupName: "👥 Xodimlar" },
@@ -46,7 +47,7 @@ const CATEGORIES = [
   { key: "sotuv_konsultant", label: "Sotuv konsultant", group: "xodimlar", groupName: "👥 Xodimlar" },
   { key: "sotuv_av", label: "Sotuv av.", group: "xodimlar", groupName: "👥 Xodimlar" },
 
-  // Ofis & Xo'jalik
+  // Ofis & Xo'jalik (11 ta)
   { key: "tushlik", label: "Tushlik", group: "ofis", groupName: "🏢 Ofis & Xo‘jalik" },
   { key: "mini_taom", label: "Mini taom", group: "ofis", groupName: "🏢 Ofis & Xo‘jalik" },
   { key: "arenda", label: "Arenda", group: "ofis", groupName: "🏢 Ofis & Xo‘jalik" },
@@ -60,7 +61,7 @@ const CATEGORIES = [
   { key: "remont", label: "Remont", group: "ofis", groupName: "🏢 Ofis & Xo‘jalik" },
   { key: "org_tex", label: "org. Tex", group: "ofis", groupName: "🏢 Ofis & Xo‘jalik" },
 
-  // Marketing & Sotuv
+  // Marketing & Sotuv (7 ta)
   { key: "marketing_okl", label: "Marketing + okl", group: "marketing", groupName: "📢 Marketing & Savdo" },
   { key: "marketing_kpi", label: "Marketing KPI", group: "marketing", groupName: "📢 Marketing & Savdo" },
   { key: "target", label: "Target", group: "marketing", groupName: "📢 Marketing & Savdo" },
@@ -69,7 +70,7 @@ const CATEGORIES = [
   { key: "oqish_motivya", label: "O'qish motiv-ya", group: "marketing", groupName: "📢 Marketing & Savdo" },
   { key: "sotish_uchun", label: "Sotish uchun", group: "marketing", groupName: "📢 Marketing & Savdo" },
 
-  // Boshqa & Qarz
+  // Boshqa & Qarz (5 ta)
   { key: "sergeliga_qarz", label: "Sergeliga qarz", group: "boshqa", groupName: "🔄 Qarz & Boshqa" },
   { key: "onlinega_qarz", label: "Onlinega qarz", group: "boshqa", groupName: "🔄 Qarz & Boshqa" },
   { key: "kutilmagan_xarajat", label: "Kutilmagan xarajat", group: "boshqa", groupName: "🔄 Qarz & Boshqa" },
@@ -86,7 +87,7 @@ const GROUPS = [
 
 // Tekshirish uchun Get
 function doGet(e) {
-  return ContentService.createTextOutput("✅ Zinnur Hisobchi Bot (Google Apps Script) ishlamoqda!");
+  return ContentService.createTextOutput("✅ Zinnur Hisobchi Bot (Google Apps Script) 24/7 ishlamoqda!");
 }
 
 // Webhook orqali Telegramdan keladigan xabarlarni qabul qilish
@@ -117,28 +118,69 @@ function handleIncomingMessage(msg) {
   const text = msg.text.trim();
   const chatTitle = msg.chat.title || "";
   const chatId = msg.chat.id;
+  const fromId = String(msg.from.id);
 
   if (text.startsWith("/start")) {
-    const fromId = String(msg.from.id);
-    let startMsg = "Assalomu alaykum! Men <b>ZIN-NUR Xisobchi Boti</b>man.\n\n";
-    startMsg += "📝 Xarajat kiritish:\n";
-    startMsg += "• <code>/hisob uchtepa taksi 25000</code>\n";
-    startMsg += "• <code>/hisob sergeli taksi 25000</code>\n";
-    startMsg += "• <code>/hisob sergeli #tushlik 35000 osh</code>\n\n";
+    let startMsg = "Assalomu alaykum! Men <b>ZIN-NUR Xisobchi Boti</b>man (Google Sheets 24/7).\n\n";
+    startMsg += "📝 <b>Xarajat kiritish:</b>\n";
+    startMsg += "• Uchtepa: <code>/hisob_uchtepa taksi 25000</code>\n";
+    startMsg += "• Sergeli: <code>/hisob_sergeli taksi 25000</code>\n";
+    startMsg += "• Yoki menyudan buyruqni bosing, bot o'zi so'raydi!\n\n";
     if (fromId === ADMIN_ID) {
-      startMsg += "👑 <b>Siz Administrator sifatida tizimdasiz!</b>";
+      startMsg += "👑 <b>Siz Administrator sifatida tizimdasiz!</b> (ID: <code>" + fromId + "</code>)";
     }
     sendTelegram("sendMessage", { chat_id: chatId, text: startMsg, parse_mode: "HTML" });
     return;
   }
 
-  const match = text.match(/^\/(?:hisob|xarajat)(?:@\w+)?(?:\s+(.*))?$/is);
-  if (!match || !match[1]) return;
+  // Check if command is empty slash command e.g. /hisob_sergeli or /hisob_uchtepa
+  const cmdMatch = text.match(/^\/(?:hisob|xarajat)(?:_(uchtepa|sergeli))?(?:@\w+)?(?:\s+(.*))?$/is);
+  if (cmdMatch) {
+    const cmdBranch = cmdMatch[1] ? cmdMatch[1].toLowerCase() : (chatTitle.toLowerCase().includes("sergeli") ? "sergeli" : "uchtepa");
+    const payload = cmdMatch[2] ? cmdMatch[2].trim() : "";
 
-  let payload = match[1].trim();
+    if (!payload) {
+      // User just tapped the command from menu
+      const branchConfig = BRANCHES[cmdBranch] || BRANCHES.uchtepa;
+      const promptText = "✍️ <b>[" + branchConfig.name + "]</b> Iltimos, xarajat nomi va summasini yozing:\n<i>(Masalan: <code>taksi 25000</code> yoki <code>obed 35000 #tushlik</code>)</i>";
 
-  // 1. Filialni aniqlash
-  let branch = "uchtepa";
+      sendTelegram("sendMessage", {
+        chat_id: chatId,
+        text: promptText,
+        parse_mode: "HTML",
+        reply_to_message_id: msg.message_id,
+        reply_markup: JSON.stringify({ force_reply: true, selective: true })
+      });
+
+      // Save user prompt session
+      CacheService.getScriptCache().put("prompt_" + chatId + "_" + fromId, cmdBranch, 600);
+      return;
+    }
+
+    // Direct command with text
+    processExpenseText(msg, payload, cmdBranch);
+    return;
+  }
+
+  // Check if message is a reply to prompt or plain text
+  const cachedBranch = CacheService.getScriptCache().get("prompt_" + chatId + "_" + fromId);
+  const branchToUse = cachedBranch || (chatTitle.toLowerCase().includes("sergeli") ? "sergeli" : "uchtepa");
+
+  if (cachedBranch || msg.reply_to_message || msg.chat.type === "private") {
+    const processed = processExpenseText(msg, text, branchToUse);
+    if (processed) {
+      CacheService.getScriptCache().remove("prompt_" + chatId + "_" + fromId);
+    }
+  }
+}
+
+function processExpenseText(msg, rawText, defaultBranch) {
+  let payload = rawText.trim();
+  const chatTitle = msg.chat.title || "";
+  const chatId = msg.chat.id;
+
+  // 1. Extract branch if typed inside text
+  let branch = defaultBranch || "uchtepa";
   if (/\b(?:sergeli|сергели|#sergeli)\b/i.test(payload) || /sergeli/i.test(chatTitle)) {
     branch = "sergeli";
     payload = payload.replace(/\b(?:sergeli|сергели|#sergeli)\b/gi, "").trim();
@@ -147,7 +189,7 @@ function handleIncomingMessage(msg) {
     payload = payload.replace(/\b(?:uchtepa|учтепа|#uchtepa)\b/gi, "").trim();
   }
 
-  // 2. Tegni aniqlash
+  // 2. Extract hashtag category
   let suggestedCat = null;
   const hashM = payload.match(/#([\w\u0400-\u04FF_'-]+)/i);
   if (hashM) {
@@ -156,7 +198,7 @@ function handleIncomingMessage(msg) {
     payload = payload.replace(hashM[0], "").trim();
   }
 
-  // 3. Summa va nomini ajratish
+  // 3. Extract title and amount
   payload = payload.replace(/\s*(?:so['’`]?m|сум|sum|руб|rub|\$|usd)\s*$/i, "").trim();
   let title = "";
   let amount = 0;
@@ -171,10 +213,10 @@ function handleIncomingMessage(msg) {
     amount = parseFloat(startMatch[1].replace(/\s+/g, "").replace(/,/g, "."));
     title = startMatch[2].trim();
   } else {
-    return;
+    return false;
   }
 
-  if (!title || isNaN(amount) || amount <= 0) return;
+  if (!title || isNaN(amount) || amount <= 0) return false;
 
   const from = msg.from || {};
   const userName = ((from.first_name || "") + " " + (from.last_name || "")).trim() || from.username || "Noma'lum";
@@ -183,6 +225,8 @@ function handleIncomingMessage(msg) {
 
   const expData = {
     expId: expId,
+    chatId: chatId,
+    messageId: msg.message_id,
     title: title,
     amount: amount,
     branch: branch,
@@ -193,17 +237,17 @@ function handleIncomingMessage(msg) {
 
   CacheService.getScriptCache().put(expId, JSON.stringify(expData), 21600);
 
-  // Guruhda qisqa tasdiq
+  // Group receipt
   if (msg.chat.type !== "private") {
     sendTelegram("sendMessage", {
       chat_id: chatId,
-      text: "📩 <i>Xarajat arizasi (" + BRANCHES[branch].name + ") qabul qilindi.</i>",
+      text: "📩 <i>[" + BRANCHES[branch].name + "] Xarajat arizasi qabul qilindi (\"" + title + "\" — " + formatAmountDisplay(amount) + ") va adminga yuborildi.</i>",
       parse_mode: "HTML",
       reply_to_message_id: msg.message_id
     });
   }
 
-  // Adminga kartochka
+  // Admin approval card
   const keyboard = buildMainKeyboard(expId, suggestedCat, branch);
   const adminText =
     "🔔 <b>Yangi xarajat arizasi!</b>\n\n" +
@@ -219,6 +263,8 @@ function handleIncomingMessage(msg) {
     parse_mode: "HTML",
     reply_markup: JSON.stringify(keyboard)
   });
+
+  return true;
 }
 
 function handleCallback(cb) {
@@ -241,6 +287,7 @@ function handleCallback(cb) {
     return;
   }
   const expData = JSON.parse(cached);
+  const adminWho = cb.from ? (cb.from.first_name || "Admin") : "Admin";
 
   if (action === "cancel") {
     CacheService.getScriptCache().remove(expId);
@@ -250,6 +297,21 @@ function handleCallback(cb) {
       text: "❌ <b>Xarajat arizasi bekor qilindi.</b>\n\n📝 " + expData.title + " (" + formatAmountDisplay(expData.amount) + ")",
       parse_mode: "HTML"
     });
+
+    // Notify group with exact format
+    if (expData.chatId) {
+      let groupCancel = "❌ <b>Tasdiqlanmadi</b>\n\n";
+      groupCancel += "📍 <b>Filial:</b> " + BRANCHES[expData.branch].name + "\n";
+      groupCancel += "📝 <b>Nomi:</b> <code>" + expData.title + "</code>\n";
+      groupCancel += "💵 <b>Summa:</b> <b>" + formatAmountDisplay(expData.amount) + "</b>";
+
+      sendTelegram("sendMessage", {
+        chat_id: expData.chatId,
+        text: groupCancel,
+        parse_mode: "HTML",
+        reply_to_message_id: expData.messageId
+      });
+    }
     return;
   }
 
@@ -318,7 +380,7 @@ function handleCallback(cb) {
     const cat = CATEGORIES.find(c => c.key === catKey);
     if (!cat) return;
 
-    // Saqlash
+    // Save directly to Google Sheet
     const res = saveToBranchSheet(expData.branch, catKey, expData.title, expData.amount);
     CacheService.getScriptCache().remove(expId);
 
@@ -329,7 +391,8 @@ function handleCallback(cb) {
       "📝 <b>Nomi:</b> " + expData.title + "\n" +
       "💵 <b>Yozilgan summa:</b> " + res.addedAmount + " ming (" + formatAmountDisplay(expData.amount) + ")\n" +
       "📅 <b>Oy va kun:</b> " + res.month + ", " + res.day + "-kun (Qator: " + res.row + ")\n" +
-      "👤 <b>Yuboruvchi:</b> " + expData.userName;
+      "👤 <b>Yuboruvchi:</b> " + expData.userName + "\n" +
+      "👑 <b>Tasdiqladi:</b> " + adminWho;
 
     sendTelegram("editMessageText", {
       chat_id: cb.message.chat.id,
@@ -337,6 +400,22 @@ function handleCallback(cb) {
       text: successText,
       parse_mode: "HTML"
     });
+
+    // Notify group with exact format: Tasdiqlandi
+    if (expData.chatId) {
+      let groupNotification = "✅ <b>Tasdiqlandi</b>\n\n";
+      groupNotification += "📍 <b>Filial:</b> " + BRANCHES[expData.branch].name + "\n";
+      groupNotification += "📝 <b>Nomi:</b> <code>" + expData.title + "</code>\n";
+      groupNotification += "💵 <b>Summa:</b> <b>" + formatAmountDisplay(expData.amount) + "</b>\n";
+      groupNotification += "📊 <b>Bo‘lim:</b> <code>" + cat.label + "</code>";
+
+      sendTelegram("sendMessage", {
+        chat_id: expData.chatId,
+        text: groupNotification,
+        parse_mode: "HTML",
+        reply_to_message_id: expData.messageId
+      });
+    }
   }
 }
 
@@ -346,12 +425,12 @@ function saveToBranchSheet(branchKey, catKey, title, amount) {
   const sheet = ss.getSheetByName(branch.sheetTitle) || ss.getSheets()[0];
 
   const catIdx = CATEGORIES.findIndex(c => c.key === catKey);
-  const sumCol = 3 + (catIdx * 2); // Col C dan boshlanadi
+  const sumCol = 3 + (catIdx * 2); // Starts at Column C (Col 3)
   const descCol = sumCol + 1;
 
   const now = new Date();
   const day = now.getDate();
-  const row = day + 2;
+  const row = day + 2; // Rows 3..33 map to Day 1..31
 
   let sheetAmount = amount;
   if (amount >= 1000) sheetAmount = amount / 1000;
@@ -439,13 +518,26 @@ function sendTelegram(method, payload) {
 }
 
 // =================================================================
-// 🔗 1 BOSISHDA TELEGRAM WEBHOOKNI GOOGLE APPS SCRIPTGA ULASH:
+// 🔗 1 BOSISHDA BUYRUQLAR VA TELEGRAM WEBHOOKNI O'RNATISH:
 // =================================================================
-// 1. Deploy -> New Deployment -> Web App -> Anyone (Barcha uchun) -> Deploy.
-// 2. Web App URL manzilini nusxalang va quyidagi qatorga qo'ying:
-// 3. Ushbu 'setTelegramWebhook' funksiyasini 1 marta 'Run' qiling!
-function setTelegramWebhook() {
-  const webAppUrl = "SIZNING_WEB_APP_URL_MANZILINGIZ";
-  const res = sendTelegram("setWebhook", { url: webAppUrl });
-  Logger.log(res.getContentText());
+// 1. Extensions -> Apps Script ichiga ushbu kodni joylashtiring.
+// 2. Deploy -> New Deployment -> Web App (Execute as: Me, Who has access: Anyone) -> Deploy.
+// 3. Web App URL manzilini oling va quyidagi 'webAppUrl' o'rniga qo'ying:
+// 4. 'setupBotAndWebhook' funksiyasini 1 marta 'Run' qiling!
+function setupBotAndWebhook() {
+  const webAppUrl = "SIZNING_WEB_APP_URL"; // Deploy qilingan Web App URL
+
+  // 1. Webhook o'rnatish
+  const resWebhook = sendTelegram("setWebhook", { url: webAppUrl });
+  Logger.log("Webhook result: " + resWebhook.getContentText());
+
+  // 2. Buyruqlar menyusini o'rnatish
+  const commands = [
+    { command: "hisob_uchtepa", description: "🏢 Uchtepa: /hisob_uchtepa taksi 25000" },
+    { command: "hisob_sergeli", description: "🏬 Sergeli: /hisob_sergeli taksi 25000" },
+    { command: "hisob", description: "📝 Xarajat: /hisob filial nomi summa" },
+    { command: "start", description: "🚀 Botni ishga tushirish" }
+  ];
+  sendTelegram("setMyCommands", { commands: commands });
+  Logger.log("Commands registered!");
 }
